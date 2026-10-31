@@ -1,0 +1,483 @@
+{
+  "cities": [
+    {
+      "id": "bengaluru",
+      "name": "Bengaluru",
+      "areas": [
+        {
+          "id": "uttarahalli",
+          "name": "Uttarahalli",
+          "streets": [
+            {
+              "id": "utt-main",
+              "name": "⚠ Main Road (Survey No. 42-48)",
+              "problem": true,
+              "origin": [0, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 12,
+              "sidewalkWidth": 3,
+              "emptyPlotCenter": [20, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-utt-1",
+                  "name": "Uttarahalli Civic Center",
+                  "plot": [-35, -18],
+                  "footprint": [18, 14],
+                  "floors": 4,
+                  "type": "commercial",
+                  "hasSolar": true
+                },
+                {
+                  "id": "bldg-utt-2",
+                  "name": "Cauvery Complex",
+                  "plot": [40, -18],
+                  "footprint": [16, 12],
+                  "floors": 3,
+                  "type": "residential",
+                  "hasSolar": false
+                },
+                {
+                  "id": "bldg-utt-3",
+                  "name": "Sannidhi Nilaya",
+                  "plot": [-40, 18],
+                  "footprint": [14, 12],
+                  "floors": 2,
+                  "type": "residential",
+                  "hasSolar": false
+                },
+                {
+                  "id": "bldg-utt-4",
+                  "name": "Sri Balaji Tech Park (G+5)",
+                  "plot": [35, 20],
+                  "footprint": [22, 16],
+                  "floors": 5,
+                  "type": "commercial",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-water-1",
+                  "agency": "BWSSB",
+                  "type": "water",
+                  "color": "#00aaff",
+                  "diameter": 0.8,
+                  "depth_m": 2.5,
+                  "path": [
+                    [-55, -2.5, -2.0],
+                    [-15, -2.5, -2.0],
+                    [20, -2.5, -2.4],
+                    [55, -2.5, -2.4]
+                  ]
+                },
+                {
+                  "id": "u-gas-1",
+                  "agency": "GAIL Gas",
+                  "type": "gas",
+                  "color": "#ff8800",
+                  "diameter": 0.45,
+                  "depth_m": 1.8,
+                  "path": [
+                    [-55, -1.8, 2.5],
+                    [5, -1.8, 2.5],
+                    [25, -1.8, 1.8],
+                    [55, -1.8, 1.8]
+                  ]
+                },
+                {
+                  "id": "u-fiber-1",
+                  "agency": "Airtel / BSNL",
+                  "type": "fiber",
+                  "color": "#ff00aa",
+                  "diameter": 0.25,
+                  "depth_m": 1.1,
+                  "path": [
+                    [-55, -1.1, -4.5],
+                    [0, -1.1, -4.5],
+                    [55, -1.1, -4.5]
+                  ]
+                },
+                {
+                  "id": "u-power-1",
+                  "agency": "BESCOM 11kV",
+                  "type": "power",
+                  "color": "#ff3300",
+                  "diameter": 0.35,
+                  "depth_m": 1.4,
+                  "path": [
+                    [-55, -1.4, 4.5],
+                    [5, -1.4, 4.5],
+                    [55, -1.4, 4.5]
+                  ]
+                },
+                {
+                  "id": "u-fiber-2",
+                  "agency": "ACT Fibernet Lateral",
+                  "type": "fiber",
+                  "color": "#ff00aa",
+                  "diameter": 0.2,
+                  "depth_m": 0.9,
+                  "path": [
+                    [-25, -0.9, -5.5],
+                    [-25, -0.9, 0.0],
+                    [-25, -0.9, 5.5]
+                  ]
+                },
+                {
+                  "id": "u-water-2",
+                  "agency": "BWSSB Sub-lateral",
+                  "type": "water",
+                  "color": "#00aaff",
+                  "diameter": 0.4,
+                  "depth_m": 2.2,
+                  "path": [
+                    [15, -2.2, -5.5],
+                    [15, -2.2, 0.0],
+                    [15, -2.2, 5.5]
+                  ]
+                },
+                {
+                  "id": "u-power-2",
+                  "agency": "BESCOM Feeder Branch",
+                  "type": "power",
+                  "color": "#ff3300",
+                  "diameter": 0.3,
+                  "depth_m": 1.5,
+                  "path": [
+                    [-5, -1.5, -5.5],
+                    [-5, -1.5, 5.5]
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "utt-80ft",
+              "name": "Uttarahalli 80ft Road",
+              "problem": false,
+              "origin": [180, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 14,
+              "sidewalkWidth": 3,
+              "emptyPlotCenter": [180, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-utt80-1",
+                  "name": "South End Residency",
+                  "plot": [160, -18],
+                  "footprint": [16, 12],
+                  "floors": 3,
+                  "type": "residential",
+                  "hasSolar": false
+                },
+                {
+                  "id": "bldg-utt80-2",
+                  "name": "Anjaneya Arcade",
+                  "plot": [200, 18],
+                  "footprint": [18, 14],
+                  "floors": 4,
+                  "type": "commercial",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-utt80-water",
+                  "agency": "BWSSB",
+                  "type": "water",
+                  "color": "#00aaff",
+                  "diameter": 0.6,
+                  "depth_m": 2.2,
+                  "path": [
+                    [125, -2.2, -2.5],
+                    [235, -2.2, -2.5]
+                  ]
+                },
+                {
+                  "id": "u-utt80-power",
+                  "agency": "BESCOM",
+                  "type": "power",
+                  "color": "#ff3300",
+                  "diameter": 0.35,
+                  "depth_m": 1.3,
+                  "path": [
+                    [125, -1.3, 3.5],
+                    [235, -1.3, 3.5]
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "utt-temple",
+              "name": "Subramanyapura Temple Road",
+              "problem": false,
+              "origin": [360, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 10,
+              "sidewalkWidth": 2.5,
+              "emptyPlotCenter": [360, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-utttemp-1",
+                  "name": "Heritage Bhavan",
+                  "plot": [340, -16],
+                  "footprint": [14, 12],
+                  "floors": 2,
+                  "type": "residential",
+                  "hasSolar": false
+                },
+                {
+                  "id": "bldg-utttemp-2",
+                  "name": "Shree Complex",
+                  "plot": [380, 16],
+                  "footprint": [15, 12],
+                  "floors": 3,
+                  "type": "commercial",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-utttemp-fiber",
+                  "agency": "Jio Fiber",
+                  "type": "fiber",
+                  "color": "#ff00aa",
+                  "diameter": 0.2,
+                  "depth_m": 1.0,
+                  "path": [
+                    [305, -1.0, -2.0],
+                    [415, -1.0, -2.0]
+                  ]
+                },
+                {
+                  "id": "u-utttemp-water",
+                  "agency": "BWSSB",
+                  "type": "water",
+                  "color": "#00aaff",
+                  "diameter": 0.5,
+                  "depth_m": 2.4,
+                  "path": [
+                    [305, -2.4, 2.0],
+                    [415, -2.4, 2.0]
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kanakapura",
+          "name": "Kanakapura",
+          "streets": [
+            {
+              "id": "kana-metro",
+              "name": "Kanakapura Metro Corridor",
+              "problem": false,
+              "origin": [0, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 14,
+              "sidewalkWidth": 3.5,
+              "emptyPlotCenter": [15, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-kana-1",
+                  "name": "Metro Heights",
+                  "plot": [-25, -20],
+                  "footprint": [20, 15],
+                  "floors": 5,
+                  "type": "commercial",
+                  "hasSolar": true
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-kana-power",
+                  "agency": "BMRCL / BESCOM",
+                  "type": "power",
+                  "color": "#ff3300",
+                  "diameter": 0.5,
+                  "depth_m": 1.8,
+                  "path": [[-55, -1.8, 3.0], [55, -1.8, 3.0]]
+                }
+              ]
+            },
+            {
+              "id": "kana-thalaghatta",
+              "name": "Thalaghattapura Cross",
+              "problem": false,
+              "origin": [180, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 12,
+              "sidewalkWidth": 3,
+              "emptyPlotCenter": [180, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-kana-2",
+                  "name": "Green Meadows",
+                  "plot": [170, 18],
+                  "footprint": [16, 12],
+                  "floors": 3,
+                  "type": "residential",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-kana-water",
+                  "agency": "BWSSB Cauvery Stage V",
+                  "type": "water",
+                  "color": "#00aaff",
+                  "diameter": 0.7,
+                  "depth_m": 2.6,
+                  "path": [[125, -2.6, -2.0], [235, -2.6, -2.0]]
+                }
+              ]
+            },
+            {
+              "id": "kana-vajarahalli",
+              "name": "Vajarahalli Link Road",
+              "problem": false,
+              "origin": [360, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 10,
+              "sidewalkWidth": 2.5,
+              "emptyPlotCenter": [360, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-kana-3",
+                  "name": "Silver Oak Suites",
+                  "plot": [350, -16],
+                  "footprint": [14, 12],
+                  "floors": 2,
+                  "type": "residential",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-kana-gas",
+                  "agency": "GAIL Gas",
+                  "type": "gas",
+                  "color": "#ff8800",
+                  "diameter": 0.35,
+                  "depth_m": 1.6,
+                  "path": [[305, -1.6, 2.0], [415, -1.6, 2.0]]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "jayanagar",
+          "name": "Jayanagar",
+          "streets": [
+            {
+              "id": "jay-4th",
+              "name": "Jayanagar 4th Block Blvd",
+              "problem": false,
+              "origin": [0, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 14,
+              "sidewalkWidth": 4,
+              "emptyPlotCenter": [20, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-jay-1",
+                  "name": "Jayanagar Shopping Complex",
+                  "plot": [-20, -20],
+                  "footprint": [24, 18],
+                  "floors": 4,
+                  "type": "commercial",
+                  "hasSolar": true
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-jay-water",
+                  "agency": "BWSSB Heritage Line",
+                  "type": "water",
+                  "color": "#00aaff",
+                  "diameter": 0.6,
+                  "depth_m": 2.2,
+                  "path": [[-55, -2.2, -3.0], [55, -2.2, -3.0]]
+                }
+              ]
+            },
+            {
+              "id": "jay-9th",
+              "name": "9th Block Main Avenue",
+              "problem": false,
+              "origin": [180, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 12,
+              "sidewalkWidth": 3,
+              "emptyPlotCenter": [180, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-jay-2",
+                  "name": "Cosmo Plaza",
+                  "plot": [175, 18],
+                  "footprint": [18, 14],
+                  "floors": 3,
+                  "type": "commercial",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-jay-fiber",
+                  "agency": "Tata Communications",
+                  "type": "fiber",
+                  "color": "#ff00aa",
+                  "diameter": 0.25,
+                  "depth_m": 1.1,
+                  "path": [[125, -1.1, 2.5], [235, -1.1, 2.5]]
+                }
+              ]
+            },
+            {
+              "id": "jay-ashoka",
+              "name": "Ashoka Pillar Ring",
+              "problem": false,
+              "origin": [360, 0, 0],
+              "orientation": "ew",
+              "length": 120,
+              "roadWidth": 12,
+              "sidewalkWidth": 3,
+              "emptyPlotCenter": [360, 0, -18],
+              "buildings": [
+                {
+                  "id": "bldg-jay-3",
+                  "name": "Pillar Residency",
+                  "plot": [350, -18],
+                  "footprint": [16, 12],
+                  "floors": 3,
+                  "type": "residential",
+                  "hasSolar": false
+                }
+              ],
+              "utilities": [
+                {
+                  "id": "u-jay-power",
+                  "agency": "BESCOM Grid-Ring",
+                  "type": "power",
+                  "color": "#ff3300",
+                  "diameter": 0.4,
+                  "depth_m": 1.5,
+                  "path": [[305, -1.5, -2.0], [415, -1.5, -2.0]]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

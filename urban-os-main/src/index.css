@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    border-radius: 0px !important;
+  }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+.hard-shadow {
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+
+.hard-shadow-sm {
+  box-shadow: 2px 2px 0px 0px #000000;
+}
+
+.hard-shadow-red {
+  box-shadow: 3px 3px 0px 0px hsl(0, 100%, 43%);
+}
+
+.hard-shadow-gold {
+  box-shadow: 3px 3px 0px 0px #e5a914;
+}
+
+.hard-border {
+  border: 1px solid #000000;
+}
+
+/* Custom scrollbars for CAD technical feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-left: 1px solid #000000;
+}
+::-webkit-scrollbar-thumb {
+  background: #000000;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(0, 100%, 43%);
+}
+
+.bg-radial-vignette {
+  background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+.hard-shadow-cyan {
+  box-shadow: 3px 3px 0px 0px #00aaff;
+}
