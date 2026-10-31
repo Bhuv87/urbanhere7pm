@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useStore } from '../../store';
 
 export const ZoningHUD: React.FC = () => {
@@ -13,6 +13,26 @@ export const ZoningHUD: React.FC = () => {
   } = useStore();
 
   const [expanded, setExpanded] = useState<boolean>(true);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button')) return;
+    const rect = event.currentTarget.parentElement!.getBoundingClientRect();
+    drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = drag.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const width = event.currentTarget.parentElement!.offsetWidth;
+    const height = event.currentTarget.parentElement!.offsetHeight;
+    setPosition({
+      left: Math.max(0, Math.min(window.innerWidth - width, start.left + event.clientX - start.x)),
+      top: Math.max(0, Math.min(window.innerHeight - height, start.top + event.clientY - start.y)),
+    });
+  };
 
   // Tally placed houses height compliance
   const houseAudit = useMemo(() => {
@@ -39,12 +59,20 @@ export const ZoningHUD: React.FC = () => {
 
   return (
     <div
-      className={`absolute top-3 right-3 w-80 bg-white border-2 font-mono text-xs hard-shadow z-30 select-none ${
+      style={position ? { position: 'fixed', left: position.left, top: position.top } : undefined}
+      className={`absolute top-3 right-3 w-80 bg-white border font-mono text-xs hard-shadow z-30 select-none ${
         isOverallPass ? 'border-black' : 'border-[#dc0000]'
       }`}
     >
       {/* HUD Header */}
-      <div className="flex items-center justify-between px-2.5 py-1.5 bg-black text-white border-b border-black">
+      <div
+        className="flex items-center justify-between px-2.5 py-1.5 bg-black text-white border-b border-black cursor-move touch-none"
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={() => { drag.current = null; }}
+        onPointerCancel={() => { drag.current = null; }}
+        title="Drag to move zoning panel"
+      >
         <div className="flex items-center gap-1.5">
           <span className="text-[#eab308] font-bold">🏛</span>
           <span className="font-bold tracking-widest uppercase text-[10px]">

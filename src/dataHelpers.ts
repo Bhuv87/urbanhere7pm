@@ -82,3 +82,32 @@ export function getStreet(cityId: string, areaId: string, streetId: string) {
   const area = getArea(cityId, areaId);
   return area.streets.find((s) => s.id === streetId) || area.streets[0];
 }
+
+// Imported area streets mix world and street-local coordinates. Keep the
+// source data intact and normalize geometry only at its render/scan boundary.
+function localCoordinate(value: number, origin: number): number {
+  return origin !== 0 && Math.abs(value - origin) < Math.abs(value)
+    ? value - origin
+    : value;
+}
+
+export function getLocalBuildings(street: StreetData): Building[] {
+  return street.buildings.map((building) => ({
+    ...building,
+    plot: [
+      localCoordinate(building.plot[0], street.origin[0]),
+      localCoordinate(building.plot[1], street.origin[2]),
+    ] as [number, number],
+  }));
+}
+
+export function getLocalUtilities(street: StreetData): Utility[] {
+  return street.utilities.map((utility) => ({
+    ...utility,
+    path: utility.path.map(([x, y, z]) => [
+      localCoordinate(x, street.origin[0]),
+      y,
+      localCoordinate(z, street.origin[2]),
+    ] as [number, number, number]),
+  }));
+}

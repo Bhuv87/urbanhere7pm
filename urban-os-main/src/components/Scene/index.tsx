@@ -14,7 +14,7 @@ import { RerouteHUD } from './RerouteHUD';
 // Invalidator to trigger on-demand frame rendering when state changes
 const Invalidator: React.FC = () => {
   const { invalidate } = useThree();
-  const { exploded, streetId, viewMode, solarTime, cadModel, newHouses, newPipeRuns } = useStore();
+  const { exploded, streetId, viewMode, solarTime, cadModel, newHouses, newPipeRuns, showUtilities, pipelineFocusMode } = useStore();
 
   useEffect(() => {
     invalidate();
@@ -28,23 +28,38 @@ const Invalidator: React.FC = () => {
       clearTimeout(t3);
       clearTimeout(t4);
     };
-  }, [exploded, streetId, viewMode, solarTime, cadModel, newHouses, newPipeRuns, invalidate]);
+  }, [exploded, streetId, viewMode, solarTime, cadModel, newHouses, newPipeRuns, showUtilities, pipelineFocusMode, invalidate]);
 
   return null;
 };
 
 export const Scene: React.FC = () => {
-  const { cityId, areaId, streetId, viewMode } = useStore();
+  const { cityId, areaId, streetId, viewMode, showUtilities, pipelineFocusMode, pendingAgentPlacement, placeAgentHouses } = useStore();
   const [cursorPoint, setCursorPoint] = useState<[number, number, number] | null>(null);
+  const [agentOrigin, setAgentOrigin] = useState<[number, number] | null>(null);
 
   const currentArea = getArea(cityId, areaId);
   const currentStreet = getStreet(cityId, areaId, streetId);
 
+  useEffect(() => {
+    if (!agentOrigin || !pendingAgentPlacement) return;
+    placeAgentHouses(streetId, [
+      agentOrigin[0] - currentStreet.origin[0],
+      agentOrigin[1] - currentStreet.origin[2],
+    ]);
+    setAgentOrigin(null);
+  }, [agentOrigin, pendingAgentPlacement, placeAgentHouses, streetId, currentStreet]);
+
   return (
-    <div className="w-full h-full relative bg-[#1a1e24] select-none">
+    <div className={`w-full h-full relative select-none ${pipelineFocusMode ? 'bg-[#dce4ea]' : 'bg-[#1a1e24]'}`}>
       {/* 2D BIM Clash & Reroute HUD Overlays */}
       <ScanPanel />
       <RerouteHUD />
+      {pipelineFocusMode && (
+        <div className="absolute bottom-4 left-4 z-30 bg-white text-black border border-black shadow-[3px_3px_0_0_#000] px-3 py-2 font-mono text-[10px] font-bold">
+          PIPE NETWORK // Hover connection nodes to trace each house to its main.
+        </div>
+      )}
 
       <Canvas
         gl={{ preserveDrawingBuffer: true, antialias: !isSoftwareGl, powerPreference: 'high-performance' }}
@@ -60,13 +75,13 @@ export const Scene: React.FC = () => {
         <Environment preset="city" environmentIntensity={0.6} />
 
         {/* Global Ground Plane */}
-        <Ground onPointerMoveGround={setCursorPoint} />
+        <Ground onPointerMoveGround={setCursorPoint} onAgentOrigin={setAgentOrigin} />
 
         {/* Ground grid lines for CAD reference */}
-        <gridHelper
+        {!pipelineFocusMode && <gridHelper
           args={[600, 300, '#444444', '#282d35']}
           position={[0, 0.01, 0]}
-        />
+        />}
 
         {/* Render Streets */}
         {viewMode === 'area' ? (
@@ -78,6 +93,8 @@ export const Scene: React.FC = () => {
                   <Street
                     street={s}
                     isFocused={true}
+                    showUtilities={showUtilities}
+                    pipelineFocusMode={pipelineFocusMode}
                     cursorPoint={cursorPoint}
                   />
                 ) : (
@@ -85,6 +102,8 @@ export const Scene: React.FC = () => {
                     <Street
                       street={s}
                       isFocused={false}
+                      showUtilities={showUtilities}
+                      pipelineFocusMode={pipelineFocusMode}
                       cursorPoint={null}
                     />
                   </group>
@@ -96,12 +115,14 @@ export const Scene: React.FC = () => {
           <Street
             street={currentStreet}
             isFocused={true}
+            showUtilities={showUtilities}
+            pipelineFocusMode={pipelineFocusMode}
             cursorPoint={cursorPoint}
           />
         )}
 
         {/* Soft Contact Ground Shadows */}
-        {!isSoftwareGl && (
+        {!isSoftwareGl && !pipelineFocusMode && (
           <ContactShadows
             position={[0, 0.02, 0]}
             opacity={0.4}

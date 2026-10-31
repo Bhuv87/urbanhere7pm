@@ -11,7 +11,7 @@ interface ClashBadgeProps {
 }
 
 export const ClashBadge: React.FC<ClashBadgeProps> = ({ clash }) => {
-  const { exploded, scanResults, runScan, rerouteInProgress } = useStore();
+  const { scanResults, runScan, rerouteInProgress } = useStore();
   const meshRef = useRef<THREE.Mesh>(null);
   const groupRef = useRef<THREE.Group>(null);
 
@@ -52,8 +52,6 @@ export const ClashBadge: React.FC<ClashBadgeProps> = ({ clash }) => {
     }
   };
 
-  if (!exploded) return null;
-
   return (
     <group ref={groupRef} position={clash.position} onClick={handleClick}>
       {/* Pulsing Red Torus */}
@@ -69,7 +67,7 @@ export const ClashBadge: React.FC<ClashBadgeProps> = ({ clash }) => {
       </mesh>
 
       {/* Technical HUD Tag */}
-      <Html position={[0, 0.9, 0]} center distanceFactor={22}>
+      <Html position={[0, 0.9, 0]} center distanceFactor={22} occlude={false} zIndexRange={[100, 0]}>
         <div
           onClick={handleClick}
           className="bg-[#dc0000] text-white border border-black px-2 py-1 font-mono text-[10px] font-bold hard-shadow whitespace-nowrap cursor-pointer select-none active:translate-x-[1px] active:translate-y-[1px]"

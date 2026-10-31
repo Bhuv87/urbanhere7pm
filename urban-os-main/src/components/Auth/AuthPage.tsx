@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../../store';
-import { authService, isSupabaseConfigured, UserProfile } from '../../utils/supabase';
+import { authService, isSupabaseConfigured, supabase } from '../../utils/supabase';
 
 export const AuthPage: React.FC = () => {
   const { setCurrentUser, setStage, setToast } = useStore();
@@ -17,6 +17,47 @@ export const AuthPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [forgotStep, setForgotStep] = useState<'request' | 'reset'>('request');
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+
+  const signInAfterConfirmation = async () => {
+    setErrorMsg(null);
+    setLoading(true);
+    const result = await authService.signIn(email, password);
+    setLoading(false);
+    if (result.error || !result.user) {
+      setErrorMsg(result.error || 'Email confirmation has not completed yet.');
+      return;
+    }
+    setCurrentUser(result.user);
+    setToast(`Email verified. Welcome, ${result.user.fullName}!`);
+    setStage('portal');
+  };
+
+  const resendConfirmation = async () => {
+    setErrorMsg(null);
+    setLoading(true);
+    const result = await authService.resendSignupConfirmation(email);
+    setLoading(false);
+    if (result.error) setErrorMsg(result.error);
+    else setInfoMsg('A new confirmation email was sent. Open the newest link on your phone.');
+  };
+
+  useEffect(() => {
+    if (authService.isPasswordRecovery()) {
+      setMode('forgot');
+      setForgotStep('reset');
+      setInfoMsg('Recovery link verified. Choose a new password.');
+    }
+    const subscription = supabase?.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setMode('forgot');
+        setForgotStep('reset');
+        setEmail(session?.user.email || '');
+        setInfoMsg('Recovery link verified. Choose a new password.');
+      }
+    });
+    return () => subscription?.data.subscription.unsubscribe();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +73,8 @@ export const AuthPage: React.FC = () => {
           return;
         }
         const res = await authService.resetPasswordForEmail(email.trim());
-        setInfoMsg(res.message);
-        setForgotStep('reset');
+        if (res.success) setInfoMsg(res.message);
+        else setErrorMsg(res.message);
         setLoading(false);
         return;
       } else {
@@ -49,7 +90,7 @@ export const AuthPage: React.FC = () => {
           return;
         }
 
-        const updateRes = await authService.setNewPassword(email.trim(), newPassword);
+        const updateRes = await authService.setNewPassword(newPassword);
         if (updateRes.success && updateRes.user) {
           setCurrentUser(updateRes.user);
           setToast(`Password updated! Welcome back, ${updateRes.user.fullName}`);
@@ -91,6 +132,9 @@ export const AuthPage: React.FC = () => {
           setToast(`Account created! Welcome ${res.user.fullName}`);
         }
         setStage('portal');
+      } else if (res.warning) {
+        setInfoMsg(res.warning);
+        setAwaitingConfirmation(true);
       }
     } else {
       // Sign In
@@ -99,35 +143,9 @@ export const AuthPage: React.FC = () => {
         setErrorMsg(res.error);
       } else if (res.user) {
         setCurrentUser(res.user);
-        if (res.warning) {
-          setToast(res.warning);
-        } else {
-          setToast(`Welcome back, ${res.user.fullName}!`);
-        }
+        setToast(`Welcome back, ${res.user.fullName}!`);
         setStage('portal');
       }
-    }
-    setLoading(false);
-  };
-
-  const handleDemoLogin = async (demoRole: 'engineer' | 'official') => {
-    setLoading(true);
-    setErrorMsg(null);
-    const demoEmail = demoRole === 'engineer' ? 'engineer.south@bbmp.gov.in' : 'joint.commissioner@bbmp.gov.in';
-    const demoName = demoRole === 'engineer' ? 'K. S. Narayanaswamy' : 'Dr. R. Ramachandran';
-    const demoOrg = demoRole === 'engineer' ? 'BBMP Major Roads & Infrastructure' : 'BBMP South Zone Commissioner Office';
-
-    const res = await authService.signIn(demoEmail, 'demo123456');
-    if (res.user) {
-      const demoUser: UserProfile = {
-        ...res.user,
-        fullName: demoName,
-        role: demoRole,
-        organization: demoOrg,
-      };
-      setCurrentUser(demoUser);
-      setToast(`Logged in as ${demoName} (${demoRole.toUpperCase()})`);
-      setStage('portal');
     }
     setLoading(false);
   };
@@ -162,13 +180,13 @@ export const AuthPage: React.FC = () => {
             <span className="text-slate-400 font-bold uppercase">SUPABASE DATABASE:</span>
             {isSupabaseConfigured ? (
               <span className="text-[#00cc66] font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-[#00cc66] rounded-full inline-block animate-pulse" />
-                <span>CONNECTED (sxntjoriycultyrjuzhk)</span>
+                <span className="w-2 h-2 bg-[#00cc66] inline-block" />
+                <span>CONFIGURED</span>
               </span>
             ) : (
               <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-amber-400 rounded-full inline-block" />
-                <span>LOCAL CACHE MODE</span>
+                <span className="w-2 h-2 bg-amber-400 inline-block" />
+                <span>SETUP REQUIRED</span>
               </span>
             )}
           </div>
@@ -393,6 +411,28 @@ export const AuthPage: React.FC = () => {
               </div>
             )}
 
+            {mode === 'signup' && awaitingConfirmation && (
+              <div className="border border-white/30 p-2.5 text-[11px] text-slate-200 space-y-2">
+                <p>If you opened the email on a phone and saw a 127.0.0.1 error, the email may still be confirmed. Return to this computer and continue here.</p>
+                <button
+                  type="button"
+                  onClick={signInAfterConfirmation}
+                  disabled={loading}
+                  className="w-full border border-black bg-white text-black px-2 py-2 font-bold uppercase cursor-pointer disabled:opacity-50"
+                >
+                  I VERIFIED MY EMAIL — SIGN IN HERE
+                </button>
+                <button
+                  type="button"
+                  onClick={resendConfirmation}
+                  disabled={loading}
+                  className="w-full border border-white/40 bg-transparent text-white px-2 py-2 font-bold uppercase cursor-pointer disabled:opacity-50"
+                >
+                  RESEND CONFIRMATION EMAIL
+                </button>
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
               type="submit"
@@ -406,9 +446,9 @@ export const AuthPage: React.FC = () => {
                 : mode === 'signin'
                 ? 'SIGN IN TO TWIN →'
                 : mode === 'signup'
-                ? 'REGISTER IN SUPABASE & ENTER →'
+                ? 'REGISTER WITH SUPABASE →'
                 : forgotStep === 'request'
-                ? 'VERIFY ACCOUNT & CONTINUE →'
+                ? 'SEND RECOVERY LINK →'
                 : 'SAVE NEW PASSWORD & ENTER →'}
             </button>
 
@@ -427,36 +467,12 @@ export const AuthPage: React.FC = () => {
             )}
           </form>
 
-          {/* Quick Demo Bypass */}
-          <div className="pt-3 border-t border-white/15 space-y-2">
-            <div className="text-[10px] text-slate-400 uppercase font-bold text-center">
-              INSTANT 1-CLICK DEMO ACCESS:
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('engineer')}
-                disabled={loading}
-                className="bg-white text-black hover:bg-slate-200 border border-black py-2 text-[11px] font-bold uppercase cursor-pointer text-center"
-              >
-                ⚡ Civil Engineer
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('official')}
-                disabled={loading}
-                className="bg-white/10 text-white hover:bg-white/20 border border-white/30 py-2 text-[11px] font-bold uppercase cursor-pointer text-center"
-              >
-                🏛️ BBMP Official
-              </button>
-            </div>
-          </div>
         </div>
       </main>
 
       {/* Footer */}
       <footer className="relative z-10 max-w-4xl w-full mx-auto text-center text-xs text-slate-500 pt-4 border-t border-white/10">
-        Bengaluru Digital Twin · Connected to Supabase Project: sxntjoriycultyrjuzhk
+        Bengaluru Digital Twin · Supabase authentication
       </footer>
     </div>
   );

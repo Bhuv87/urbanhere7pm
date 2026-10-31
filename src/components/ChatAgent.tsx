@@ -22,6 +22,33 @@ export const ChatAgent: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
+  const [position, setPosition] = useState(() => ({
+    left: Math.max(8, window.innerWidth - 336),
+    top: Math.max(8, window.innerHeight - 360),
+  }));
+
+  const onDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    const rect = e.currentTarget.parentElement!.parentElement!.getBoundingClientRect();
+    dragRef.current = { pointerId: e.pointerId, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== e.pointerId) return;
+    setPosition({
+      left: Math.max(0, Math.min(window.innerWidth - 320, e.clientX - dragRef.current.offsetX)),
+      top: Math.max(0, Math.min(window.innerHeight - 40, e.clientY - dragRef.current.offsetY)),
+    });
+  };
+
+  const onDragEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId === e.pointerId) {
+      dragRef.current = null;
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -78,10 +105,18 @@ export const ChatAgent: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 select-none font-mono text-black">
+    <div className="fixed z-40 select-none font-mono text-black" style={{ left: position.left, top: position.top }}>
       <div className="w-[320px] bg-white border border-black shadow-[3px_3px_0_0_#000]">
         {/* Header */}
-        <div className="p-2 border-b border-black flex items-center justify-between bg-[#f8f8f8]">
+        <div
+          className="p-2 border-b border-black flex items-center justify-between bg-[#f8f8f8] cursor-move"
+          style={{ touchAction: 'none' }}
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          aria-label="Drag autonomous agent"
+        >
           <div className="flex items-center gap-1.5 font-bold text-xs uppercase tracking-wider">
             <span className="w-2 h-2 bg-[#00cc66] border border-black" />
             <span>🤖 AUTONOMOUS AGENT</span>

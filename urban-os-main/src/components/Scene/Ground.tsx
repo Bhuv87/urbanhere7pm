@@ -6,9 +6,10 @@ import { gridSnap } from '../../utils/gridSnap';
 
 interface GroundProps {
   onPointerMoveGround?: (point: [number, number, number]) => void;
+  onAgentOrigin?: (point: [number, number]) => void;
 }
 
-export const Ground: React.FC<GroundProps> = ({ onPointerMoveGround }) => {
+export const Ground: React.FC<GroundProps> = ({ onPointerMoveGround, onAgentOrigin }) => {
   const {
     armedTool,
     streetId,
@@ -18,6 +19,8 @@ export const Ground: React.FC<GroundProps> = ({ onPointerMoveGround }) => {
     draftPipeRun,
     commitPipeRun,
     exploded,
+    pipelineFocusMode,
+    pendingAgentPlacement,
   } = useStore();
 
   const meshRef = useRef<THREE.Mesh>(null);
@@ -36,11 +39,15 @@ export const Ground: React.FC<GroundProps> = ({ onPointerMoveGround }) => {
     const snappedX = gridSnap(pt.x, 1);
     const snappedZ = gridSnap(pt.z, 1);
 
+    if (pendingAgentPlacement) {
+      onAgentOrigin?.([snappedX, snappedZ]);
+      return;
+    }
     if (armedTool.type === 'house' && armedTool.subType) {
       const selectedModelId = useStore.getState().selectedHouseModelId;
       const ghostRot = useStore.getState().ghostRotation3D || [0, 0, 0];
       placeHouse(streetId, {
-        id: `house-${Date.now()}`,
+        id: `house-${crypto.randomUUID()}`,
         type: armedTool.subType as any,
         modelId: selectedModelId,
         plot: [snappedX, snappedZ],
@@ -77,19 +84,19 @@ export const Ground: React.FC<GroundProps> = ({ onPointerMoveGround }) => {
       ref={meshRef}
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, -0.01, 0]}
-      receiveShadow
-      onPointerMove={handlePointerMove}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
+      receiveShadow={!pipelineFocusMode}
+      onPointerMove={pipelineFocusMode ? undefined : handlePointerMove}
+      onClick={pipelineFocusMode ? undefined : handleClick}
+      onDoubleClick={pipelineFocusMode ? undefined : handleDoubleClick}
     >
       <planeGeometry args={[600, 600]} />
       <meshStandardMaterial
         color="#22262c"
         roughness={0.9}
         metalness={0.1}
-        transparent={exploded}
-        opacity={exploded ? 0.35 : 1.0}
-        depthWrite={!exploded}
+        transparent={exploded || pipelineFocusMode}
+        opacity={pipelineFocusMode ? 0 : exploded ? 0.35 : 1.0}
+        depthWrite={!exploded && !pipelineFocusMode}
       />
     </mesh>
   );

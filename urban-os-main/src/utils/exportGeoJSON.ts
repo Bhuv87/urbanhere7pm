@@ -9,6 +9,8 @@ export interface PlacedHouseData {
   rotation3D?: [number, number, number]; // [Pitch (X), Yaw (Y), Roll (Z)] in degrees
   heightScale?: number;
   customHeight?: number;
+  solarPanels?: boolean;
+  agentBlockRow?: 0 | 1;
 }
 
 const BENGALURU_LAT = 12.9716;

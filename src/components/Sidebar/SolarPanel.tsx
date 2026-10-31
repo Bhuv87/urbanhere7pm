@@ -3,7 +3,9 @@ import { useStore } from '../../store';
 import { formatTimeLabel } from '../../utils/solar';
 
 export const SolarPanel: React.FC = () => {
-  const { solarTime, setSolarTime, shadowedPanels } = useStore();
+  const { solarTime, setSolarTime, shadowedPanels, selectedObjectId, newHouses, streetId, toggleHouseSolar } = useStore();
+  const selectedHouse = (newHouses[streetId] || []).find((house) => house.id === selectedObjectId);
+  const equippedHouses = (newHouses[streetId] || []).filter((house) => house.solarPanels).length;
 
   const totalPanels = 24; // 6x4 array
   const shadowedCount = shadowedPanels.length;
@@ -39,6 +41,23 @@ export const SolarPanel: React.FC = () => {
           <span>12:00 PM</span>
           <span>06:00 PM</span>
         </div>
+      </div>
+
+      <div className="mb-2 border border-black p-2 font-mono text-[10px]">
+        <div className="flex justify-between font-bold mb-1">
+          <span>PLACED HOUSE ARRAYS:</span>
+          <span>{equippedHouses}</span>
+        </div>
+        {selectedHouse ? (
+          <button
+            onClick={() => toggleHouseSolar(streetId, selectedHouse.id)}
+            className="w-full border border-black bg-white hover:bg-black hover:text-white px-2 py-1 font-bold uppercase cursor-pointer"
+          >
+            {selectedHouse.solarPanels ? 'REMOVE SOLAR FROM SELECTED HOUSE' : 'ADD SOLAR TO SELECTED HOUSE'}
+          </button>
+        ) : (
+          <div className="text-[#555555]">Select a placed house in the 3D view to add rooftop solar.</div>
+        )}
       </div>
 
       {/* Solar Array Efficiency Monitor */}

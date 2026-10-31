@@ -9,6 +9,8 @@ export interface PlacedPipeRun {
   defaultDepth: number;
   waypoints: { x: number; z: number; depth: number }[];
   status?: 'draft' | 'committed';
+  sourceHouseId?: string;
+  connectedMainId?: string;
 }
 
 export interface ClashResult {
@@ -127,6 +129,7 @@ export function findClashes(
 
     for (const segment of segments) {
       for (const existing of existingUtilities) {
+        if (run.connectedMainId === existing.id) continue;
         const existingRadius = (existing.diameter || 0.4) / 2;
         const safetyThreshold = newRadius + existingRadius + 0.3; // 0.3m safety clearance
 

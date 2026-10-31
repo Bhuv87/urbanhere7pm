@@ -2,11 +2,11 @@ import React from 'react';
 import { useStore } from '../../store';
 
 export const RerouteHUD = () => {
-  const { rerouteMetrics, clearRerouteMetrics } = useStore();
+  const { rerouteMetrics, clearRerouteMetrics, scanResults } = useStore();
 
   if (!rerouteMetrics) return null;
 
-  const fmtClearance = (val, isPositiveGood) => {
+  const fmtClearance = (val) => {
     if (val === undefined || val === null) return '0.00m';
     const num = Number(val);
     const sign = num > 0 ? '+' : '';
@@ -31,9 +31,9 @@ export const RerouteHUD = () => {
       {/* Top Title & Close Button */}
       <div className="flex items-center justify-between pb-2 border-b border-black pr-6 relative">
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 bg-[#15803d]"></span>
+          <span className={`w-2 h-2 ${scanResults?.length ? 'bg-[#dc0000]' : 'bg-[#15803d]'}`}></span>
           <span className="font-bold text-[11px] uppercase tracking-wider text-black">
-            AUTO-REROUTE COMPLETE
+            {scanResults?.length ? `AUTO-REROUTE: ${scanResults.length} REMAIN` : 'AUTO-REROUTE COMPLETE'}
           </span>
         </div>
         <button
@@ -52,11 +52,11 @@ export const RerouteHUD = () => {
           <span className="text-[#666666] font-bold text-[10px] uppercase">CLEARANCE</span>
           <div className="font-mono font-bold text-[11px] flex items-center">
             <span className="text-[#dc0000]">
-              {fmtClearance(rerouteMetrics.clearanceBefore, false)}
+              {fmtClearance(rerouteMetrics.clearanceBefore)}
             </span>
             <span className="text-black mx-1">→</span>
-            <span className="text-[#15803d]">
-              {fmtClearance(rerouteMetrics.clearanceAfter, true)}
+            <span className={rerouteMetrics.clearanceAfter >= 0.3 ? 'text-[#15803d]' : 'text-[#dc0000]'}>
+              {fmtClearance(rerouteMetrics.clearanceAfter)}
             </span>
           </div>
         </div>

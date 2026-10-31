@@ -1,153 +1,134 @@
 import * as THREE from 'three';
 
-if (!THREE.Line3.prototype.distanceSqToPoint) {
-  THREE.Line3.prototype.distanceSqToPoint = function(point) {
-    const target = new THREE.Vector3();
-    this.closestPointToPoint(point, true, target);
-    return target.distanceToSquared(point);
-  };
+const VOXEL = 0.5;
+const keyOf = (p) => `${p.x},${p.y},${p.z}`;
+
+class MinHeap {
+  items = [];
+  push(item) {
+    const items = this.items;
+    items.push(item);
+    let i = items.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (items[parent].f <= item.f) break;
+      items[i] = items[parent];
+      i = parent;
+    }
+    items[i] = item;
+  }
+  pop() {
+    const items = this.items;
+    const first = items[0];
+    const last = items.pop();
+    if (items.length) {
+      let i = 0;
+      while (i * 2 + 1 < items.length) {
+        let child = i * 2 + 1;
+        if (child + 1 < items.length && items[child + 1].f < items[child].f) child++;
+        if (last.f <= items[child].f) break;
+        items[i] = items[child];
+        i = child;
+      }
+      items[i] = last;
+    }
+    return first;
+  }
+  get length() { return this.items.length; }
 }
 
 export function findDetourPath(run, relevantLines, clash) {
-  const origWaypoints = run.waypoints || [];
-  const cx = clash.position ? clash.position[0] : origWaypoints[0].x;
-  const cz = clash.position ? clash.position[2] : origWaypoints[0].z;
-
-  const V = 0.25;
-  const xMin = cx - 6.0, xMax = cx + 6.0;
-  const zMin = cz - 6.0, zMax = cz + 6.0;
-  const yMin = -4.0, yMax = -0.8;
-
-  const isBlocked = (x, y, z) => {
-    const pt = new THREE.Vector3(x, y, z);
-    for (const rL of relevantLines) {
-      if (rL.line.distanceSqToPoint(pt) < rL.radius * rL.radius) return true;
-    }
-    return false;
+  const original = run.waypoints || [];
+  if (original.length < 2) return original;
+  const first = original[0];
+  const last = original[original.length - 1];
+  const snap = (n) => Math.round(n / VOXEL);
+  const start = { x: snap(first.x), y: snap(-first.depth), z: snap(first.z) };
+  const goal = { x: snap(last.x), y: snap(-last.depth), z: snap(last.z) };
+  const cx = clash.position?.[0] ?? (first.x + last.x) / 2;
+  const cz = clash.position?.[2] ?? (first.z + last.z) / 2;
+  const bounds = {
+    minX: snap(Math.min(first.x, last.x, cx) - 5),
+    maxX: snap(Math.max(first.x, last.x, cx) + 5),
+    minZ: snap(Math.min(first.z, last.z, cz) - 5),
+    maxZ: snap(Math.max(first.z, last.z, cz) + 5),
+    minY: Math.min(snap(-4.5), start.y, goal.y),
+    maxY: Math.max(snap(0.5), start.y, goal.y),
   };
-
-  const w0 = origWaypoints[0];
-  const wLast = origWaypoints[origWaypoints.length - 1];
-  const entryRaw = {
-    x: Math.max(xMin, Math.min(xMax, w0.x)),
-    y: Math.max(yMin, Math.min(yMax, -w0.depth)),
-    z: Math.max(zMin, Math.min(zMax, w0.z)),
-  };
-  const exitRaw = {
-    x: Math.max(xMin, Math.min(xMax, wLast.x)),
-    y: Math.max(yMin, Math.min(yMax, -wLast.depth)),
-    z: Math.max(zMin, Math.min(zMax, wLast.z)),
-  };
-
-  const snap = (v, min) => Math.round((v - min) / V) * V + min;
-  const startPt = { x: snap(entryRaw.x, xMin), y: snap(entryRaw.y, yMin), z: snap(entryRaw.z, zMin) };
-  const endPt = { x: snap(exitRaw.x, xMin), y: snap(exitRaw.y, yMin), z: snap(exitRaw.z, zMin) };
-
+  const segments = Array.isArray(relevantLines) ? relevantLines : [];
+  const point = new THREE.Vector3();
+  const nearest = new THREE.Vector3();
   const baseline = new THREE.Line3(
-    new THREE.Vector3(startPt.x, startPt.y, startPt.z),
-    new THREE.Vector3(endPt.x, endPt.y, endPt.z)
+    new THREE.Vector3(first.x, -first.depth, first.z),
+    new THREE.Vector3(last.x, -last.depth, last.z),
   );
-  const keyOf = (x, y, z) => `${Math.round(x * 100)},${Math.round(y * 100)},${Math.round(z * 100)}`;
-  const startKey = keyOf(startPt.x, startPt.y, startPt.z);
-  const endKey = keyOf(endPt.x, endPt.y, endPt.z);
+  const isBlocked = (p) => {
+    point.set(p.x * VOXEL, p.y * VOXEL, p.z * VOXEL);
+    return segments.some(({ line, radius }) => {
+      line.closestPointToPoint(point, true, nearest);
+      return nearest.distanceToSquared(point) < radius * radius;
+    });
+  };
+  const goalKey = keyOf(goal);
+  const startKey = keyOf(start);
+  const heuristic = (p) => Math.abs(goal.x - p.x) + Math.abs(goal.y - p.y) + Math.abs(goal.z - p.z);
+  const open = new MinHeap();
+  open.push({ p: start, g: 0, f: heuristic(start) });
+  const best = new Map([[startKey, 0]]);
+  const parent = new Map();
+  const nodes = new Map([[startKey, start]]);
+  const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  let found = false;
 
-  const openSet = [{
-    pt: startPt,
-    g: 0,
-    f: Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y, endPt.z - startPt.z) / V,
-    dir: null,
-  }];
-  const cameFrom = new Map();
-  const gScores = new Map([[startKey, 0]]);
-  const closedSet = new Set();
-  const dirs = [
-    [1,0,0], [-1,0,0], [0,0,1], [0,0,-1], [0,1,0], [0,-1,0],
-    [1,0,1], [1,0,-1], [-1,0,1], [-1,0,-1],
-  ];
-
-  let current = null;
-  let iters = 0;
-
-  while (openSet.length > 0 && iters < 3500) {
-    iters++;
-    let bestIdx = 0;
-    for (let i = 1; i < openSet.length; i++) {
-      if (openSet[i].f < openSet[bestIdx].f) bestIdx = i;
-    }
-    current = openSet.splice(bestIdx, 1)[0];
-    const cKey = keyOf(current.pt.x, current.pt.y, current.pt.z);
-
-    if (Math.hypot(current.pt.x - endPt.x, current.pt.y - endPt.y, current.pt.z - endPt.z) < V * 1.1) {
-      break;
-    }
-    closedSet.add(cKey);
-
+  while (open.length) {
+    const current = open.pop();
+    const currentKey = keyOf(current.p);
+    if (current.g !== best.get(currentKey)) continue;
+    if (currentKey === goalKey) { found = true; break; }
     for (const [dx, dy, dz] of dirs) {
-      const nx = snap(current.pt.x + dx * V, xMin);
-      const ny = snap(current.pt.y + dy * V, yMin);
-      const nz = snap(current.pt.z + dz * V, zMin);
-      if (nx < xMin || nx > xMax || ny < yMin || ny > yMax || nz < zMin || nz > zMax) continue;
-
-      const nKey = keyOf(nx, ny, nz);
-      if (closedSet.has(nKey)) continue;
-      if (nKey !== endKey && nKey !== startKey && isBlocked(nx, ny, nz)) continue;
-
-      let moveCost = Math.hypot(dx, dy, dz);
-      if (Math.abs(dy) > 0) moveCost += 2.0 * Math.abs(dy);
-      const latDist = Math.sqrt(baseline.distanceSqToPoint(new THREE.Vector3(nx, ny, nz)));
-      moveCost += 3.0 * (latDist / 1.5);
-
-      if (current.dir) {
-        const dot = (current.dir[0] * dx + current.dir[1] * dy + current.dir[2] * dz) /
-                    (Math.hypot(...current.dir) * Math.hypot(dx, dy, dz));
-        if (dot < 0.707) moveCost += 5.0;
-      }
-
-      const tentativeG = current.g + moveCost;
-      if (!gScores.has(nKey) || tentativeG < gScores.get(nKey)) {
-        gScores.set(nKey, tentativeG);
-        cameFrom.set(nKey, { pt: current.pt, key: cKey });
-        const h = Math.hypot(endPt.x - nx, endPt.y - ny, endPt.z - nz) / V;
-        openSet.push({ pt: { x: nx, y: ny, z: nz }, g: tentativeG, f: tentativeG + h, dir: [dx, dy, dz] });
-      }
+      const next = { x: current.p.x + dx, y: current.p.y + dy, z: current.p.z + dz };
+      if (next.x < bounds.minX || next.x > bounds.maxX ||
+          next.y < bounds.minY || next.y > bounds.maxY ||
+          next.z < bounds.minZ || next.z > bounds.maxZ) continue;
+      const nextKey = keyOf(next);
+      if (nextKey !== goalKey && nextKey !== startKey && isBlocked(next)) continue;
+      const worldY = next.y * VOXEL;
+      let cost = 1 + (dy ? 0.8 : 0);
+      if (worldY > 0 || worldY < -4) cost += 500;
+      point.set(next.x * VOXEL, worldY, next.z * VOXEL);
+      baseline.closestPointToPoint(point, true, nearest);
+      cost += nearest.distanceTo(point) * 0.02;
+      const g = current.g + cost;
+      if (g >= (best.get(nextKey) ?? Infinity)) continue;
+      best.set(nextKey, g);
+      parent.set(nextKey, currentKey);
+      nodes.set(nextKey, next);
+      open.push({ p: next, g, f: g + heuristic(next) });
     }
   }
 
-  const rawPath = [endPt];
-  let currTrace = keyOf(current.pt.x, current.pt.y, current.pt.z);
-  while (cameFrom.has(currTrace)) {
-    const prevNode = cameFrom.get(currTrace);
-    rawPath.push(prevNode.pt);
-    currTrace = prevNode.key;
+  if (!found) return original;
+  const path = [];
+  for (let key = goalKey; key; key = parent.get(key)) {
+    path.push(nodes.get(key));
+    if (key === startKey) break;
   }
-  rawPath.reverse();
-
-  // Collinear reduction
-  const reduced = [rawPath[0]];
-  for (let i = 1; i < rawPath.length - 1; i++) {
-    const pPrev = reduced[reduced.length - 1], pCurr = rawPath[i], pNext = rawPath[i + 1];
-    const v1 = [pCurr.x - pPrev.x, pCurr.y - pPrev.y, pCurr.z - pPrev.z];
-    const v2 = [pNext.x - pCurr.x, pNext.y - pCurr.y, pNext.z - pCurr.z];
-    const l1 = Math.hypot(...v1), l2 = Math.hypot(...v2);
-    if (l1 < 1e-4 || l2 < 1e-4) continue;
-    const dot = (v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]) / (l1 * l2);
-    if (dot < 0.9998) reduced.push(pCurr);
+  path.reverse();
+  if (path.length < 2) return original;
+  const reduced = [path[0]];
+  for (let i = 1; i < path.length - 1; i++) {
+    const a = path[i - 1], b = path[i], c = path[i + 1];
+    if (b.x - a.x !== c.x - b.x || b.y - a.y !== c.y - b.y || b.z - a.z !== c.z - b.z) {
+      reduced.push(b);
+    }
   }
-  reduced.push(rawPath[rawPath.length - 1]);
-
-  const sparse = reduced.map((p) => ({
-    x: Number(p.x.toFixed(2)),
-    z: Number(p.z.toFixed(2)),
-    depth: Number(Math.max(0.8, -p.y).toFixed(2)),
+  reduced.push(path[path.length - 1]);
+  const routed = reduced.map((p) => ({
+    x: p.x * VOXEL,
+    z: p.z * VOXEL,
+    depth: Math.max(0, -p.y * VOXEL),
   }));
-
-  if (Math.hypot(w0.x - sparse[0].x, w0.z - sparse[0].z) > 0.25) {
-    sparse.unshift({ x: w0.x, z: w0.z, depth: w0.depth });
-  }
-  const lastSparse = sparse[sparse.length - 1];
-  if (Math.hypot(wLast.x - lastSparse.x, wLast.z - lastSparse.z) > 0.25) {
-    sparse.push({ x: wLast.x, z: wLast.z, depth: wLast.depth });
-  }
-
-  return sparse;
+  routed[0] = { x: first.x, z: first.z, depth: first.depth };
+  routed[routed.length - 1] = { x: last.x, z: last.z, depth: last.depth };
+  return routed;
 }

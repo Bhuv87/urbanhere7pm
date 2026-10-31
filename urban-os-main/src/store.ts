@@ -6,13 +6,17 @@ import {
   getCity,
   getArea,
   getStreet,
+  getLocalUtilities,
 } from './dataHelpers';
-import { PlacedPipeRun, ClashResult, findClashes } from './utils/clashDetection';
+import { PlacedPipeRun, ClashResult } from './utils/clashDetection';
 import { PlacedHouseData } from './utils/exportGeoJSON';
 import { ZoningReport, evaluateZoningCompliance } from './utils/zoning';
 import { HouseModelVariant, DEFAULT_HOUSE_MODELS } from './data/houseModels';
-import { UserProfile } from './utils/supabase';
-import { scanAllClashes, rerouteRun, estimateCost } from './utils/scanEngine';
+import { UserProfile, authService } from './utils/supabase';
+import { scanAllClashes, rerouteRun, estimateCost, measureMinimumClearance } from './utils/scanEngine';
+import { generatePipeToNearestMain } from './utils/autoConnectPipe';
+import { planCityHouses } from './utils/cityPlacement';
+import { generatePipeGeometryData } from './utils/pipeGenerator';
 
 export interface ArmedToolState {
   type: 'pipe' | 'house' | null;
@@ -51,7 +55,7 @@ export interface AppStore {
   openAuth: () => void;
   openPortal: () => void;
 
-  // User Profile (Supabase / local fallback)
+  // Supabase user profile
   currentUser: UserProfile | null;
   setCurrentUser: (user: UserProfile | null) => void;
   logout: () => void;
@@ -75,6 +79,9 @@ export interface AppStore {
   setViewMode: (mode: '3d' | 'topdown' | 'single' | 'area') => void;
   toggleViewMode: () => void;
   exploded: boolean;
+  showUtilities: boolean;
+  pipelineFocusMode: boolean;
+  toggleUtilities: () => void;
   toggleExplode: () => void;
   setExploded: (val: boolean) => void;
   activeSidebarTab: 'tools' | 'directory';
@@ -108,6 +115,9 @@ export interface AppStore {
   selectHouseModel: (modelId: string) => void;
   addCustomHouseModel: (model: HouseModelVariant) => void;
   newHouses: Record<string, PlacedHouseData[]>;
+  pendingAgentPlacement: { count: number; type: string } | null;
+  setPendingAgentPlacement: (placement: { count: number; type: string } | null) => void;
+  placeAgentHouses: (streetId: string, origin: [number, number]) => void;
   placeHouse: (streetId: string, house: PlacedHouseData) => void;
   clearHouses: (streetId?: string) => void;
   removeHouse: (streetId: string, houseId: string) => void;
@@ -122,6 +132,7 @@ export interface AppStore {
     }
   ) => void;
   duplicateHouse: (streetId: string, houseId: string) => void;
+  toggleHouseSolar: (streetId: string, houseId: string) => void;
   ghostRotation3D: [number, number, number];
   setGhostRotation3D: (rot: [number, number, number]) => void;
   rotateGhost: (axis: 'x' | 'y' | 'z', deltaDeg: number) => void;
@@ -176,12 +187,21 @@ export interface AppStore {
   // Toast
   toast: string | null;
   setToast: (msg: string | null) => void;
+  isDraftModalOpen: boolean;
+  draftAgencyId: string;
+  setDraftAgencyId: (id: string) => void;
+  toggleDraftModal: () => void;
+  blackboxLogs: string[];
+  addBlackboxLog: (msg: string) => void;
 }
 
 export const useStore = create<AppStore>((set, get) => ({
   // Stage defaults
   stage: 'landing',
-  setStage: (stage) => set({ stage }),
+  setStage: (stage) => {
+    set({ stage });
+    if (stage === 'explore') get().addBlackboxLog('ACTION: User entered Explore.');
+  },
   returnToLanding: () => set({ stage: 'landing' }),
   openAuth: () => set({ stage: 'auth' }),
   openPortal: () => set({ stage: 'portal' }),
@@ -190,8 +210,13 @@ export const useStore = create<AppStore>((set, get) => ({
   currentUser: null,
   setCurrentUser: (currentUser) => set({ currentUser }),
   logout: () => {
-    localStorage.removeItem('bengaluru_twin_user');
-    set({ currentUser: null, stage: 'landing' });
+    void authService.signOut().then(({ error }) => {
+      if (error) {
+        set({ toast: `Sign out failed: ${error}` });
+        return;
+      }
+      set({ currentUser: null, stage: 'landing' });
+    });
   },
 
   // Defaults preselected for instant 1-click entry
@@ -230,9 +255,11 @@ export const useStore = create<AppStore>((set, get) => ({
       stage: 'explore',
       armedTool: { type: null, subType: null },
       draftPipeRun: null,
+      pendingAgentPlacement: null,
       toast: `Loaded ${state.wizardStreet}. Explode view and CAD tools ready.`,
     });
     get().recalculateClashes();
+    get().addBlackboxLog('ACTION: User entered Explore.');
   },
 
   backToWizard: () => {
@@ -240,6 +267,7 @@ export const useStore = create<AppStore>((set, get) => ({
       stage: 'select',
       armedTool: { type: null, subType: null },
       draftPipeRun: null,
+      pendingAgentPlacement: null,
       selectedObjectId: null,
     });
     document.body.style.cursor = 'default';
@@ -254,6 +282,7 @@ export const useStore = create<AppStore>((set, get) => ({
       streetId,
       selectedObjectId: null,
       draftPipeRun: null,
+      pendingAgentPlacement: null,
       armedTool: { type: null, subType: null },
     });
     get().recalculateClashes();
@@ -270,19 +299,26 @@ export const useStore = create<AppStore>((set, get) => ({
   setActiveSidebarTab: (activeSidebarTab) => set({ activeSidebarTab }),
 
   exploded: false,
+  showUtilities: true,
+  pipelineFocusMode: false,
+  toggleUtilities: () => set((state) => ({
+    pipelineFocusMode: !state.pipelineFocusMode,
+    showUtilities: true,
+  })),
   toggleExplode: () => set((state) => ({ exploded: !state.exploded })),
   setExploded: (exploded) => set({ exploded }),
 
   // Tool armament
   armedTool: { type: null, subType: null },
   armTool: (tool) => {
-    set({ armedTool: tool });
+    set({ armedTool: tool, pendingAgentPlacement: null });
     document.body.style.cursor = tool.type ? 'crosshair' : 'default';
   },
   disarmTool: () => {
     set({
       armedTool: { type: null, subType: null },
       draftPipeRun: null,
+      pendingAgentPlacement: null,
       viewMode: '3d',
     });
     document.body.style.cursor = 'default';
@@ -323,6 +359,7 @@ export const useStore = create<AppStore>((set, get) => ({
         waypoints: [],
       },
       armedTool: { type: 'pipe', subType: type, mode },
+      pendingAgentPlacement: null,
       toast:
         mode === 'draw'
           ? `Click ground to place waypoints · Enter/DblClick to commit · Esc to cancel`
@@ -334,6 +371,9 @@ export const useStore = create<AppStore>((set, get) => ({
   addPipeWaypoint: (wp) => {
     const draft = get().draftPipeRun;
     if (!draft) return;
+    if (![wp.x, wp.z, wp.depth].every(Number.isFinite) || wp.depth < 0) return;
+    const last = draft.waypoints[draft.waypoints.length - 1];
+    if (last && Math.hypot(wp.x - last.x, wp.z - last.z, wp.depth - last.depth) < 0.05) return;
     const newWaypoints = [...draft.waypoints, wp];
     set({
       draftPipeRun: {
@@ -354,7 +394,10 @@ export const useStore = create<AppStore>((set, get) => ({
 
   commitPipeRun: () => {
     const { draftPipeRun, streetId, newPipeRuns } = get();
-    if (!draftPipeRun || draftPipeRun.waypoints.length < 2) {
+    const waypoints = draftPipeRun?.waypoints.filter((wp, i, all) =>
+      Number.isFinite(wp.x) && Number.isFinite(wp.z) && Number.isFinite(wp.depth) && wp.depth >= 0 &&
+      (i === 0 || Math.hypot(wp.x - all[i - 1].x, wp.z - all[i - 1].z, wp.depth - all[i - 1].depth) >= 0.05)) || [];
+    if (!draftPipeRun || waypoints.length < 2) {
       set({
         draftPipeRun: null,
         armedTool: { type: null, subType: null },
@@ -366,12 +409,12 @@ export const useStore = create<AppStore>((set, get) => ({
 
     const currentRuns = newPipeRuns[streetId] || [];
     const newRun: PlacedPipeRun = {
-      id: `pipe-run-${Date.now()}`,
+      id: `pipe-run-${crypto.randomUUID()}`,
       type: draftPipeRun.type,
       color: draftPipeRun.color,
       diameter: draftPipeRun.diameter,
       defaultDepth: draftPipeRun.defaultDepth,
-      waypoints: draftPipeRun.waypoints,
+      waypoints,
       status: 'committed',
     };
 
@@ -383,10 +426,11 @@ export const useStore = create<AppStore>((set, get) => ({
       draftPipeRun: null,
       armedTool: { type: null, subType: null },
       viewMode: '3d',
-      toast: `Committed ${draftPipeRun.type.toUpperCase()} run (${draftPipeRun.waypoints.length} waypoints)`,
+      toast: `Committed ${draftPipeRun.type.toUpperCase()} run (${waypoints.length} waypoints)`,
     });
     document.body.style.cursor = 'default';
     get().recalculateClashes();
+    get().addBlackboxLog(`ACTION: User drew ${draftPipeRun.type} pipe with ${waypoints.length} waypoints.`);
   },
 
   cancelPipeRun: () => {
@@ -425,6 +469,7 @@ export const useStore = create<AppStore>((set, get) => ({
     set({
       selectedHouseModelId: modelId,
       armedTool: { type: 'house', subType: model.category },
+      pendingAgentPlacement: null,
       toast: `Armed ${model.name} (${model.category} FT) · Click ground plot to place · Esc to cancel`,
     });
     document.body.style.cursor = 'crosshair';
@@ -436,6 +481,7 @@ export const useStore = create<AppStore>((set, get) => ({
       selectedHouseModelId: model.id,
       expandedPlotCategory: model.category,
       armedTool: { type: 'house', subType: model.category },
+      pendingAgentPlacement: null,
       toast: `Custom CAD Model "${model.name}" ready to place on ${model.category} plots!`,
     }));
     document.body.style.cursor = 'crosshair';
@@ -445,31 +491,95 @@ export const useStore = create<AppStore>((set, get) => ({
   setCADGuideOpen: (cadGuideOpen) => set({ cadGuideOpen }),
 
   newHouses: {},
+  pendingAgentPlacement: null,
+  setPendingAgentPlacement: (pendingAgentPlacement) => {
+    set({ pendingAgentPlacement, armedTool: { type: null, subType: null }, draftPipeRun: null });
+    document.body.style.cursor = pendingAgentPlacement ? 'crosshair' : 'default';
+  },
+  placeAgentHouses: (streetId, origin) => {
+    const state = get();
+    const pending = state.pendingAgentPlacement;
+    if (!pending) return;
+    const area = getArea(state.cityId, state.areaId);
+    const models = state.houseModels.filter((model) => model.category === pending.type);
+    const plots = planCityHouses(area.streets, streetId, origin, pending.count, state.houseModels, pending.type, state.newHouses);
+    const housesByStreet = { ...state.newHouses };
+    const runsByStreet = { ...state.newPipeRuns };
+    let connectionCount = 0;
+    for (let i = 0; i < plots.length; i++) {
+      const planned = plots[i];
+      const model = models[i % models.length];
+      const street = area.streets.find((candidate) => candidate.id === planned.streetId)!;
+      const house: PlacedHouseData = {
+        id: `house-agent-${crypto.randomUUID()}`,
+        type: pending.type as PlacedHouseData['type'],
+        modelId: model.id,
+        plot: planned.plot,
+        rotation: planned.side < 0 ? 0 : Math.PI,
+        rotation3D: [0, planned.side < 0 ? 0 : 180, 0],
+        agentBlockRow: planned.row,
+      };
+      housesByStreet[street.id] = [...(housesByStreet[street.id] || []), house];
+      for (const type of ['water', 'gas'] as const) {
+        const run = generatePipeToNearestMain(house.plot, type, getLocalUtilities(street), runsByStreet[street.id] || [], house.id);
+        if (run) {
+          runsByStreet[street.id] = [...(runsByStreet[street.id] || []), run];
+          connectionCount++;
+        }
+      }
+    }
+    const streetsUsed = new Set(plots.map((plot) => plot.streetId)).size;
+    set({
+      newHouses: housesByStreet,
+      newPipeRuns: runsByStreet,
+      pendingAgentPlacement: null,
+      viewMode: streetsUsed > 1 ? 'area' : state.viewMode,
+      toast: plots.length === pending.count
+        ? `Placed ${plots.length} houses in ${streetsUsed} planned street block${streetsUsed === 1 ? '' : 's'}`
+        : `Placed ${plots.length} of ${pending.count} houses; remaining lots are occupied`,
+    });
+    get().recalculateClashes();
+    get().addBlackboxLog(`ACTION: Placed ${plots.length} houses via Agent across ${streetsUsed} street blocks; created ${connectionCount} service connections.`);
+    document.body.style.cursor = 'default';
+  },
   placeHouse: (streetId, house) => {
-    const currentHouses = get().newHouses[streetId] || [];
-    const model = get().houseModels.find((m) => m.id === house.modelId) ||
-                  get().houseModels.find((m) => m.category === house.type);
+    const state = get();
+    const currentHouses = state.newHouses[streetId] || [];
+    const model = state.houseModels.find((m) => m.id === house.modelId) ||
+                  state.houseModels.find((m) => m.category === house.type);
     const modelName = model ? model.name : `${house.type} FT`;
+    const street = getStreet(state.cityId, state.areaId, streetId);
+    const connections = (['water', 'gas'] as const)
+      .map((type) => generatePipeToNearestMain(house.plot, type, getLocalUtilities(street), state.newPipeRuns[streetId] || [], house.id))
+      .filter((run): run is PlacedPipeRun => run !== null);
 
     set({
       newHouses: {
-        ...get().newHouses,
+        ...state.newHouses,
         [streetId]: [...currentHouses, { ...house, modelId: model?.id }],
+      },
+      newPipeRuns: {
+        ...state.newPipeRuns,
+        [streetId]: [...(state.newPipeRuns[streetId] || []), ...connections],
       },
       toast: `Placed ${modelName} at (${house.plot[0].toFixed(1)}, ${house.plot[1].toFixed(1)})`,
     });
+    get().recalculateClashes();
   },
 
   clearHouses: (streetId) => {
     const target = streetId || get().streetId;
+    const runs = get().newPipeRuns[target] || [];
     set({
       newHouses: {
         ...get().newHouses,
         [target]: [],
       },
+      newPipeRuns: { ...get().newPipeRuns, [target]: runs.filter((run) => !run.sourceHouseId) },
       selectedObjectId: null,
       toast: 'Cleared all placed houses',
     });
+    get().recalculateClashes();
   },
 
   removeHouse: (streetId, houseId) => {
@@ -479,9 +589,14 @@ export const useStore = create<AppStore>((set, get) => ({
         ...get().newHouses,
         [streetId]: houses.filter((h) => h.id !== houseId),
       },
+      newPipeRuns: {
+        ...get().newPipeRuns,
+        [streetId]: (get().newPipeRuns[streetId] || []).filter((run) => run.sourceHouseId !== houseId),
+      },
       selectedObjectId: null,
       toast: 'House removed',
     });
+    get().recalculateClashes();
   },
 
   updateHouseTransform: (streetId, houseId, transform) => {
@@ -505,19 +620,27 @@ export const useStore = create<AppStore>((set, get) => ({
     const houses = get().newHouses[streetId] || [];
     const source = houses.find((h) => h.id === houseId);
     if (!source) return;
-    const newId = `house-${Date.now()}`;
+    const newId = `house-${crypto.randomUUID()}`;
     const duplicated: PlacedHouseData = {
       ...source,
       id: newId,
       plot: [source.plot[0] + 5, source.plot[1]],
     };
+    get().placeHouse(streetId, duplicated);
+    set({ selectedObjectId: newId, toast: `Duplicated house to (${duplicated.plot[0].toFixed(1)}, ${duplicated.plot[1].toFixed(1)})` });
+  },
+
+  toggleHouseSolar: (streetId, houseId) => {
+    const houses = get().newHouses[streetId] || [];
+    const house = houses.find((item) => item.id === houseId);
+    if (!house) return;
+    const enabled = !house.solarPanels;
     set({
       newHouses: {
         ...get().newHouses,
-        [streetId]: [...houses, duplicated],
+        [streetId]: houses.map((item) => item.id === houseId ? { ...item, solarPanels: enabled } : item),
       },
-      selectedObjectId: newId,
-      toast: `Duplicated house to (${duplicated.plot[0].toFixed(1)}, ${duplicated.plot[1].toFixed(1)})`,
+      toast: enabled ? 'Rooftop solar array installed' : 'Rooftop solar array removed',
     });
   },
 
@@ -540,10 +663,10 @@ export const useStore = create<AppStore>((set, get) => ({
   clashes: [],
   recalculateClashes: () => {
     const state = get();
-    const currentStreet = getStreet(state.cityId, state.areaId, state.streetId);
-    const runs = state.newPipeRuns[state.streetId] || [];
-    const clashes = findClashes(currentStreet.utilities || [], runs);
-    set({ clashes });
+    const area = getArea(state.cityId, state.areaId);
+    const clashes = area.streets.flatMap((street) =>
+      scanAllClashes(state.newPipeRuns[street.id] || [], getLocalUtilities(street), street.id));
+    set({ clashes, scanResults: null, rerouteMetrics: null });
   },
 
   // Scan & Auto-Reroute
@@ -553,10 +676,11 @@ export const useStore = create<AppStore>((set, get) => ({
   rerouteInProgress: false,
 
   runScan: () => {
-    set({ scanInProgress: true });
+    set({ scanInProgress: true, rerouteMetrics: null });
     const state = get();
-    const currentStreet = getStreet(state.cityId, state.areaId, state.streetId);
-    const results = scanAllClashes(state.newPipeRuns, currentStreet.utilities || [], state.streetId);
+    const area = getArea(state.cityId, state.areaId);
+    const results = area.streets.flatMap((street) =>
+      scanAllClashes(state.newPipeRuns[street.id] || [], getLocalUtilities(street), street.id));
     set({
       scanResults: results,
       clashes: results,
@@ -566,78 +690,88 @@ export const useStore = create<AppStore>((set, get) => ({
           ? `Scan complete: ${results.length} 3D clash${results.length > 1 ? 'es' : ''} detected!`
           : `Scan complete: All clear! 0 clashes detected.`,
     });
+    get().addBlackboxLog(`ACTION: Scan ran; detected ${results.length} clashes.`);
   },
 
   autoFixAll: () => {
-    const { scanResults, newPipeRuns, streetId, cityId, areaId } = get();
-    if (!scanResults || scanResults.length === 0) return;
-
+    const initial = get();
+    if (!initial.scanResults?.length || initial.rerouteInProgress) return;
+    const areaId = initial.areaId;
     set({ rerouteInProgress: true });
-    const currentStreet = getStreet(cityId, areaId, streetId);
-    const existingUtils = currentStreet.utilities || [];
-
-    const clashingRunIds = new Set(scanResults.map((c: any) => c.runId));
-    const currentStreetRuns = newPipeRuns[streetId] || [];
-
-    const updatedRuns = [...currentStreetRuns];
-    let totalLengthDelta = 0;
-    let totalDepthDelta = 0;
-    let minClearanceBefore = 0;
-    let maxClearanceAfter = 0.45;
-
-    for (let i = 0; i < updatedRuns.length; i++) {
-      const run = updatedRuns[i];
-      if (!clashingRunIds.has(run.id)) continue;
-
-      const runClashes = scanResults.filter((c: any) => c.runId === run.id);
-      let currentRun = run;
-      for (const clash of runClashes) {
-        const { waypoints, metrics } = rerouteRun(currentRun, existingUtils, clash);
-        currentRun = { ...currentRun, waypoints };
-        if (metrics) {
-          totalLengthDelta += metrics.lengthDelta || 0;
-          totalDepthDelta += Math.abs(metrics.depthDelta || 0);
-          minClearanceBefore = Math.min(minClearanceBefore, metrics.clearanceBefore || -0.15);
-          maxClearanceAfter = Math.max(maxClearanceAfter, metrics.clearanceAfter || 0.45);
-        }
-      }
-      updatedRuns[i] = currentRun;
-    }
-
-    set({
-      newPipeRuns: {
-        ...newPipeRuns,
-        [streetId]: updatedRuns,
-      },
-    });
 
     setTimeout(() => {
       const state = get();
-      const st = getStreet(state.cityId, state.areaId, state.streetId);
-      const newClashes = scanAllClashes(state.newPipeRuns, st.utilities || [], state.streetId);
+      if (state.areaId !== areaId) {
+        set({ rerouteInProgress: false });
+        return;
+      }
+      const area = getArea(state.cityId, state.areaId);
+      const affected = new Set(state.scanResults?.map((clash: any) => clash.runId) || []);
+      const nextRuns = { ...state.newPipeRuns };
+      let beforeClearance = Infinity;
+      let afterClearance = Infinity;
+      let totalLengthDelta = 0;
+      let totalDepthDelta = 0;
+      let changedRuns = 0;
+      const score = (clashes: any[]) =>
+        clashes.length * 10 + clashes.reduce((sum, clash) => sum + (clash.clearanceDeficit || 0), 0);
 
-      const aggregatedMetrics = {
-        clearanceBefore: minClearanceBefore < 0 ? minClearanceBefore : -0.15,
-        clearanceAfter: maxClearanceAfter > 0 ? maxClearanceAfter : 0.45,
-        lengthDelta: Number(totalLengthDelta.toFixed(1)),
-        depthDelta: Number(totalDepthDelta.toFixed(1)),
-        costEst: estimateCost(totalLengthDelta, totalDepthDelta),
-      };
+      for (const street of area.streets) {
+        const utilities = getLocalUtilities(street);
+        nextRuns[street.id] = (state.newPipeRuns[street.id] || []).map((run) => {
+          if (!affected.has(run.id)) return run;
+          beforeClearance = Math.min(beforeClearance,
+            measureMinimumClearance([run], utilities) ?? Infinity);
+          let currentRun = run;
+          for (let attempt = 0; attempt < 6; attempt++) {
+            const currentClashes = scanAllClashes([currentRun], utilities, street.id);
+            if (!currentClashes.length) break;
+            const worst = [...currentClashes].sort(
+              (a: any, b: any) => (b.clearanceDeficit || 0) - (a.clearanceDeficit || 0))[0];
+            const proposed = rerouteRun(currentRun, utilities, worst);
+            if (proposed.waypoints === currentRun.waypoints) break;
+            const candidate = { ...currentRun, waypoints: proposed.waypoints };
+            const candidateClashes = scanAllClashes([candidate], utilities, street.id);
+            if (score(candidateClashes) >= score(currentClashes) - 0.01) break;
+            currentRun = candidate;
+          }
+          afterClearance = Math.min(afterClearance,
+            measureMinimumClearance([currentRun], utilities) ?? Infinity);
+          if (currentRun !== run) {
+            changedRuns++;
+            const lengthOf = (pipe: PlacedPipeRun) =>
+              generatePipeGeometryData(pipe.waypoints).segments.reduce((sum, segment) => sum + segment.length, 0);
+            totalLengthDelta += lengthOf(currentRun) - lengthOf(run);
+            totalDepthDelta += Math.max(...currentRun.waypoints.map((wp) => wp.depth)) -
+              Math.max(...run.waypoints.map((wp) => wp.depth));
+          }
+          return currentRun;
+        });
+      }
 
+      const remaining = area.streets.flatMap((street) =>
+        scanAllClashes(nextRuns[street.id] || [], getLocalUtilities(street), street.id));
       set({
-        scanResults: newClashes,
-        clashes: newClashes,
-        rerouteMetrics: aggregatedMetrics,
+        newPipeRuns: nextRuns,
+        scanResults: remaining,
+        clashes: remaining,
+        rerouteMetrics: {
+          clearanceBefore: Number.isFinite(beforeClearance) ? beforeClearance : 0,
+          clearanceAfter: Number.isFinite(afterClearance) ? afterClearance : 0,
+          lengthDelta: Number(totalLengthDelta.toFixed(1)),
+          depthDelta: Number(totalDepthDelta.toFixed(1)),
+          costEst: estimateCost(totalLengthDelta, totalDepthDelta),
+        },
         rerouteInProgress: false,
-        toast:
-          newClashes.length === 0
-            ? `Auto-reroute complete: All clashes resolved!`
-            : `Auto-reroute partial: ${newClashes.length} remaining`,
+        toast: remaining.length === 0
+          ? `Auto-fix resolved all clashes across ${changedRuns} pipe run${changedRuns === 1 ? '' : 's'}`
+          : `Auto-fix improved ${changedRuns} run${changedRuns === 1 ? '' : 's'}; ${remaining.length} clashes still need review`,
       });
-    }, 750);
+      get().addBlackboxLog(`ACTION: Auto-fix updated ${changedRuns} pipe runs; ${remaining.length} clashes remain.`);
+    }, 50);
   },
 
-  clearScan: () => set({ scanResults: null }),
+  clearScan: () => set({ scanResults: null, rerouteMetrics: null }),
   clearRerouteMetrics: () => set({ rerouteMetrics: null }),
 
   // CAD & Zoning
@@ -727,4 +861,16 @@ export const useStore = create<AppStore>((set, get) => ({
   // Toast
   toast: null,
   setToast: (toast) => set({ toast }),
+  isDraftModalOpen: false,
+  draftAgencyId: 'bbmp',
+  setDraftAgencyId: (draftAgencyId) => set({ draftAgencyId }),
+  toggleDraftModal: () => {
+    const opening = !get().isDraftModalOpen;
+    set({ isDraftModalOpen: opening });
+    if (opening) get().addBlackboxLog('ACTION: Petition drafted from 3D twin.');
+  },
+  blackboxLogs: [],
+  addBlackboxLog: (msg) => set((state) => ({
+    blackboxLogs: [...state.blackboxLogs, `[${new Date().toISOString()}] - ${msg}`],
+  })),
 }));

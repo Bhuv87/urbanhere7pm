@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useStore } from '../../store';
-import { getStreet } from '../../dataHelpers';
+import { getStreet, getLocalBuildings } from '../../dataHelpers';
 
 interface GhostHouseProps {
   snappedPosition: [number, number, number] | null;
@@ -16,18 +16,20 @@ export const GhostHouse: React.FC<GhostHouseProps> = ({ snappedPosition }) => {
     houseModels,
     selectedHouseModelId,
     ghostRotation3D,
+    pendingAgentPlacement,
   } = useStore();
 
-  const isHouseArmed = armedTool.type === 'house' && !!armedTool.subType && !!snappedPosition;
+  const isHouseArmed = ((armedTool.type === 'house' && !!armedTool.subType) || !!pendingAgentPlacement) && !!snappedPosition;
 
   // Resolve matching house model
   const activeModel = useMemo(() => {
     return (
+      (pendingAgentPlacement && houseModels.find((m) => m.category === pendingAgentPlacement.type)) ||
       houseModels.find((m) => m.id === selectedHouseModelId) ||
       houseModels.find((m) => m.category === armedTool.subType) ||
       houseModels[0]
     );
-  }, [houseModels, selectedHouseModelId, armedTool.subType]);
+  }, [houseModels, selectedHouseModelId, armedTool.subType, pendingAgentPlacement]);
 
   const [width, depth] = activeModel.footprint;
   const height = activeModel.height;
@@ -52,7 +54,7 @@ export const GhostHouse: React.FC<GhostHouseProps> = ({ snappedPosition }) => {
     }
 
     // Overlapping existing buildings?
-    for (const b of street.buildings) {
+    for (const b of getLocalBuildings(street)) {
       const bHalfW = b.footprint[0] / 2;
       const bHalfD = b.footprint[1] / 2;
       const minX = b.plot[0] - bHalfW - width / 2;

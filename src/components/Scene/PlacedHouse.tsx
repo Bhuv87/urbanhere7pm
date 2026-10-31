@@ -3,6 +3,7 @@ import { PlacedHouseData } from '../../utils/exportGeoJSON';
 import { useStore } from '../../store';
 import { HouseArchitecture } from './HouseArchitecture';
 import { HouseModelVariant } from '../../data/houseModels';
+import { SolarPanelMesh } from './SolarPanelMesh';
 
 interface PlacedHouseProps {
   house: PlacedHouseData;
@@ -58,6 +59,13 @@ export const PlacedHouse: React.FC<PlacedHouseProps> = ({ house, interactive = t
       onContextMenu={handleContextMenu}
     >
       <HouseArchitecture model={model} isSelected={isSelected} />
+      {house.solarPanels && (
+        <SolarPanelMesh
+          roofCenter={[0, effectiveHeight + 0.5, 0]}
+          roofSize={model.footprint}
+          syncMonitor={false}
+        />
+      )}
 
       {/* Height Limit Violation Indicator */}
       {isHeightViolation && (

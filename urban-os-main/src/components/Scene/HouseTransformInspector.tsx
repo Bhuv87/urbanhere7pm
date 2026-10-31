@@ -11,6 +11,7 @@ export const HouseTransformInspector: React.FC = () => {
     updateHouseTransform,
     removeHouse,
     duplicateHouse,
+    toggleHouseSolar,
     houseModels,
     zoningHeightLimit,
   } = useStore();
@@ -105,6 +106,13 @@ export const HouseTransformInspector: React.FC = () => {
             </span>
           </div>
         </div>
+
+        <button
+          onClick={() => toggleHouseSolar(streetId, house.id)}
+          className={`w-full border border-black px-2 py-2 text-[11px] font-bold uppercase cursor-pointer ${house.solarPanels ? 'bg-[#003366] text-white' : 'bg-white text-black hover:bg-[#e2e8f0]'}`}
+        >
+          {house.solarPanels ? '☀ REMOVE ROOFTOP SOLAR' : '☀ ADD ROOFTOP SOLAR'}
+        </button>
 
         {/* 3-AXIS ROTATION CONTROLS */}
         <div className="border border-black p-2 space-y-2.5">

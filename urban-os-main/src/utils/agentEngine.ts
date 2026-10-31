@@ -1,10 +1,9 @@
 import { useStore } from '../store';
-import { getStreet } from '../dataHelpers';
+import { getStreet, getLocalUtilities } from '../dataHelpers';
 import { findClashes, PlacedPipeRun } from './clashDetection';
-import { PlacedHouseData } from './exportGeoJSON';
 
 export interface AgentActionContext {
-  placeHouse?: (streetId: string, house: PlacedHouseData) => void;
+  setPendingAgentPlacement?: (placement: { count: number; type: string } | null) => void;
   clearHouses?: (streetId?: string) => void;
   startPipeRun?: (type: 'water' | 'gas' | 'fiber' | 'power', mode?: 'draw' | 'vertical') => void;
   addPipeWaypoint?: (wp: { x: number; z: number; depth: number }) => void;
@@ -24,38 +23,9 @@ export async function parseCommand(
   if (lower.includes('place') && (lower.includes('house') || lower.includes('houses'))) {
     const numMatch = lower.match(/\d+/);
     const count = numMatch ? Math.min(100, Math.max(1, parseInt(numMatch[0], 10))) : 10;
-    const categories: Array<'20x30' | '30x40' | '40x60'> = ['20x30', '30x40', '40x60'];
-
-    const roadHalf = (street.roadWidth || 14) / 2;
-    const streetLength = street.length || 150;
-    const zMin = -streetLength / 2 + 10;
-    const zMax = streetLength / 2 - 10;
-    const zSpan = zMax - zMin;
-
-    for (let i = 0; i < count; i++) {
-      const cat = categories[i % categories.length];
-      const side = i % 2 === 0 ? -1 : 1;
-      const row = Math.floor(i / 10);
-      const x = side * (roadHalf + 6 + row * 8);
-      const z = zMin + ((i % 10) / 10) * zSpan + (Math.random() * 3 - 1.5);
-      const rot = side > 0 ? -Math.PI / 2 : Math.PI / 2;
-
-      const house: PlacedHouseData = {
-        id: `house-agent-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
-        type: cat,
-        plot: [Number(x.toFixed(1)), Number(z.toFixed(1))],
-        rotation: rot,
-        rotation3D: [0, Math.round((rot * 180) / Math.PI), 0],
-      };
-
-      if (actions.placeHouse) {
-        actions.placeHouse(streetId, house);
-      } else {
-        useStore.getState().placeHouse(streetId, house);
-      }
-    }
-
-    return `Placed ${count} houses. Check the view.`;
+    const type = lower.match(/(?:20x30|30x40|40x60)/)?.[0] || '30x40';
+    (actions.setPendingAgentPlacement || useStore.getState().setPendingAgentPlacement)({ count, type });
+    return `Ready to place ${count} houses. Click the map to set the origin point.`;
   }
 
   // RULE 2: Pipe [type] from [start] to [end]
@@ -69,19 +39,26 @@ export async function parseCommand(
     const xOffset = type === 'gas' ? 2.5 : type === 'fiber' ? -3.0 : type === 'power' ? 3.5 : -1.5;
     const halfLen = (street.length || 150) / 2 - 6;
 
-    const startRun = actions.startPipeRun || useStore.getState().startPipeRun;
-    const addWaypoint = actions.addPipeWaypoint || useStore.getState().addPipeWaypoint;
-    const commitRun = actions.commitPipeRun || useStore.getState().commitPipeRun;
-
-    startRun(type, 'draw');
-    addWaypoint({ x: xOffset, z: -halfLen, depth });
-    addWaypoint({ x: xOffset, z: halfLen, depth });
-    commitRun();
+    (actions.startPipeRun || useStore.getState().startPipeRun)(type, 'draw');
+    const waypoints = [
+      { x: xOffset, z: -halfLen, depth },
+      { x: xOffset, z: halfLen, depth },
+    ];
+    if (waypoints.every((wp) => Number.isFinite(wp.x) && Number.isFinite(wp.z) && Number.isFinite(wp.depth)) &&
+        Math.hypot(waypoints[1].x - waypoints[0].x, waypoints[1].z - waypoints[0].z) > 0.05) {
+      for (const wp of waypoints) {
+        (actions.addPipeWaypoint || useStore.getState().addPipeWaypoint)(wp);
+      }
+      (actions.commitPipeRun || useStore.getState().commitPipeRun)();
+    } else {
+      useStore.getState().cancelPipeRun();
+      return 'Could not form a valid pipe route.';
+    }
 
     // Check clashes immediately after placement
     const updatedStore = useStore.getState();
     const runs: PlacedPipeRun[] = updatedStore.newPipeRuns[streetId] || [];
-    const clashes = findClashes(street.utilities || [], runs);
+    const clashes = findClashes(getLocalUtilities(street), runs);
     updatedStore.recalculateClashes();
 
     if (clashes.length > 0) {

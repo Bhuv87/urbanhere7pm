@@ -76,6 +76,7 @@ export function scanAllClashes(newPipeRuns, existingUtilitiesByStreet, focusedSt
       for (let sIdx = 0; sIdx < segments.length; sIdx++) {
         const seg = segments[sIdx];
         for (const existing of existingList) {
+          if (run.connectedMainId === existing.id) continue;
           const exR = (existing.diameter || 0.4) / 2;
           const safetyThreshold = newR + exR + 0.3;
           if (!existing.path || existing.path.length < 2) continue;
@@ -115,12 +116,31 @@ export function scanAllClashes(newPipeRuns, existingUtilitiesByStreet, focusedSt
 }
 
 function polyLength(wps) {
-  let len = 0;
-  for (let i = 0; i < wps.length - 1; i++) {
-    const a = wps[i], b = wps[i + 1];
-    len += Math.hypot(b.x - a.x, b.depth - a.depth, b.z - a.z);
+  return generatePipeGeometryData(wps).segments.reduce((length, segment) => length + segment.length, 0);
+}
+
+export function measureMinimumClearance(runs, existingUtilities) {
+  let minimum = Infinity;
+  for (const run of runs) {
+    if (!run.waypoints || run.waypoints.length < 2) continue;
+    for (const segment of generatePipeGeometryData(run.waypoints).segments) {
+      for (const existing of existingUtilities) {
+        if (run.connectedMainId === existing.id || !existing.path) continue;
+        for (let i = 0; i < existing.path.length - 1; i++) {
+          const result = closestDistBetweenSegments(
+            segment.start, segment.end, existing.path[i], existing.path[i + 1]);
+          minimum = Math.min(minimum,
+            result.distance - ((run.diameter || 0.4) + (existing.diameter || 0.4)) / 2);
+        }
+      }
+    }
   }
-  return len;
+  return Number.isFinite(minimum) ? Number(minimum.toFixed(2)) : null;
+}
+
+function collisionScore(run, existingUtilities) {
+  const clashes = scanAllClashes([run], existingUtilities, 'candidate');
+  return clashes.length * 10 + clashes.reduce((score, clash) => score + clash.clearanceDeficit, 0);
 }
 
 export function rerouteRun(run, existingUtilities, clash) {
@@ -144,20 +164,114 @@ export function rerouteRun(run, existingUtilities, clash) {
     if (!ex.path) continue;
     for (let k = 0; k < ex.path.length - 1; k++) {
       const p0 = ex.path[k], p1 = ex.path[k + 1];
-      const midX = (p0[0] + p1[0]) / 2, midZ = (p0[2] + p1[2]) / 2;
-      if (Math.hypot(midX - cx, midZ - cz) < 10.0) {
+      const line = new THREE.Line3(new THREE.Vector3(...p0), new THREE.Vector3(...p1));
+      const near = new THREE.Vector3();
+      line.closestPointToPoint(new THREE.Vector3(cx, clash.position?.[1] ?? -2, cz), true, near);
+      if (Math.hypot(near.x - cx, near.z - cz) < 10.0) {
         relevantLines.push({
-          line: new THREE.Line3(new THREE.Vector3(...p0), new THREE.Vector3(...p1)),
+          line,
           radius: blockRadius
         });
       }
     }
   }
 
-  const sparseWaypoints = findDetourPath(run, relevantLines, clash);
+  // Route only the local span around the clash. This preserves the remaining
+  // hand-drawn waypoints and keeps the voxel search bounded on long streets.
+  const clashPoint = new THREE.Vector3(...(clash.position || [cx, -origWaypoints[0].depth, cz]));
+  let segmentIndex = 0;
+  let nearestDistance = Infinity;
+  for (let i = 0; i < origWaypoints.length - 1; i++) {
+    const a = origWaypoints[i], b = origWaypoints[i + 1];
+    const line = new THREE.Line3(
+      new THREE.Vector3(a.x, -a.depth, a.z),
+      new THREE.Vector3(b.x, -b.depth, b.z),
+    );
+    const near = new THREE.Vector3();
+    line.closestPointToPoint(clashPoint, true, near);
+    const distance = near.distanceToSquared(clashPoint);
+    if (distance < nearestDistance) { nearestDistance = distance; segmentIndex = i; }
+  }
+  const a = origWaypoints[segmentIndex], b = origWaypoints[segmentIndex + 1];
+  const dx = b.x - a.x, dz = b.z - a.z, dd = b.depth - a.depth;
+  const lengthSq = dx * dx + dz * dz + dd * dd;
+  const length = Math.sqrt(lengthSq);
+  const t = lengthSq > 0
+    ? Math.max(0, Math.min(1, ((cx - a.x) * dx + (cz - a.z) * dz + (-clashPoint.y - a.depth) * dd) / lengthSq))
+    : 0.5;
+  const entryT = Math.max(0, t - 6 / (length || 1));
+  const exitT = Math.min(1, t + 6 / (length || 1));
+  const interpolate = (fraction) => ({
+    x: a.x + dx * fraction,
+    z: a.z + dz * fraction,
+    depth: a.depth + dd * fraction,
+  });
+  const localWaypoints = [interpolate(entryT), interpolate(exitT)];
+  const makeFullRoute = (localPath) => [
+    ...origWaypoints.slice(0, segmentIndex + 1),
+    ...localPath,
+    ...origWaypoints.slice(segmentIndex + 1),
+  ].filter((wp, i, all) => i === 0 ||
+    Math.hypot(wp.x - all[i - 1].x, wp.z - all[i - 1].z, wp.depth - all[i - 1].depth) > 0.05);
+  const originalScore = collisionScore(run, existingList);
+  let bestRoute = null;
+  let bestScore = originalScore;
+  let bestCost = Infinity;
+  const consider = (localPath) => {
+    const route = makeFullRoute(localPath);
+    const score = collisionScore({ ...run, waypoints: route }, existingList);
+    const extraLength = Math.max(0, polyLength(route) - polyLength(origWaypoints));
+    const cost = extraLength + localPath.length * 0.15;
+    if (score < bestScore - 0.01 || (score === bestScore && score < originalScore && cost < bestCost)) {
+      bestRoute = route;
+      bestScore = score;
+      bestCost = cost;
+    }
+  };
+
+  // A single level below or beside the obstruction produces readable BIM runs.
+  for (const depth of [2.75, 3, 3.25, 3.5, 3.75, 4, 2.25, 2, 1.75, 1.5, 1.25, 1]) {
+    if (Math.abs(depth - a.depth) < 0.05 && Math.abs(depth - b.depth) < 0.05) continue;
+    consider([
+      localWaypoints[0],
+      { ...localWaypoints[0], depth },
+      { ...localWaypoints[1], depth },
+      localWaypoints[1],
+    ]);
+  }
+  const planarLength = Math.hypot(dx, dz);
+  if (planarLength > 0.1) {
+    for (const offset of [-6, -4, -2, 2, 4, 6]) {
+      const ox = (-dz / planarLength) * offset;
+      const oz = (dx / planarLength) * offset;
+      consider([
+        localWaypoints[0],
+        { ...localWaypoints[0], x: localWaypoints[0].x + ox, z: localWaypoints[0].z + oz },
+        { ...localWaypoints[1], x: localWaypoints[1].x + ox, z: localWaypoints[1].z + oz },
+        localWaypoints[1],
+      ]);
+    }
+  }
+  if (bestScore > 0) {
+    const detour = findDetourPath({ ...run, waypoints: localWaypoints }, relevantLines, clash);
+    if (detour !== localWaypoints) consider(detour);
+  }
+  if (!bestRoute) {
+    return {
+      waypoints: origWaypoints,
+      metrics: {
+        clearanceBefore: measureMinimumClearance([run], existingList) ?? 0,
+        clearanceAfter: measureMinimumClearance([run], existingList) ?? 0,
+        lengthDelta: 0,
+        depthDelta: 0,
+        costEst: 0,
+      },
+    };
+  }
+  const sparseWaypoints = bestRoute;
   const origLen = polyLength(origWaypoints);
   const newLen = polyLength(sparseWaypoints);
-  const lengthDelta = Number((Math.max(0, newLen - origLen) + 1.2).toFixed(1));
+  const lengthDelta = Number((newLen - origLen).toFixed(1));
   const origDepthAvg = origWaypoints.reduce((a, b) => a + b.depth, 0) / origWaypoints.length;
   const newDepthAvg = sparseWaypoints.reduce((a, b) => a + b.depth, 0) / sparseWaypoints.length;
   const depthDelta = Number((newDepthAvg - origDepthAvg).toFixed(1));
@@ -165,8 +279,8 @@ export function rerouteRun(run, existingUtilities, clash) {
   return {
     waypoints: sparseWaypoints,
     metrics: {
-      clearanceBefore: Number((-Math.max(0.12, clash.clearanceDeficit || 0.15)).toFixed(2)),
-      clearanceAfter: 0.45,
+      clearanceBefore: measureMinimumClearance([run], existingList) ?? 0,
+      clearanceAfter: measureMinimumClearance([{ ...run, waypoints: sparseWaypoints }], existingList) ?? 0,
       lengthDelta,
       depthDelta,
       costEst: estimateCost(lengthDelta, depthDelta)

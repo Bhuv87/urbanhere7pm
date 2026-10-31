@@ -1,13 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { Scene } from './Scene';
 import { ZoningHUD } from './Scene/ZoningHUD';
 import { HouseTransformInspector } from './Scene/HouseTransformInspector';
 import { ChatAgent } from './ChatAgent';
+import { DraftPetitionModal } from './Scene/DraftPetitionModal';
 import { useStore } from '../store';
 
 export const Explore: React.FC = () => {
+  const [showClashAlert, setShowClashAlert] = useState(false);
   const {
     armedTool,
     disarmTool,
@@ -23,7 +25,19 @@ export const Explore: React.FC = () => {
     rotateGhost,
     newHouses,
     updateHouseTransform,
+    clashes,
+    pendingAgentPlacement,
   } = useStore();
+
+  useEffect(() => {
+    if (clashes.length === 0) {
+      setShowClashAlert(false);
+      return;
+    }
+    setShowClashAlert(true);
+    const timer = window.setTimeout(() => setShowClashAlert(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [clashes.length]);
 
   // Global keyboard shortcuts (Esc, Enter, Delete, R/X/Z rotation)
   useEffect(() => {
@@ -149,6 +163,17 @@ export const Explore: React.FC = () => {
 
           {/* Autonomous AI Command Center Agent */}
           <ChatAgent />
+          <DraftPetitionModal />
+          {showClashAlert && (
+            <div role="alert" className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-white text-[#dc0000] border border-black px-3 py-2 font-mono text-xs font-bold shadow-[3px_3px_0_0_#000]">
+              ⚠ {clashes.length} CLASHES DETECTED. Click SCAN to resolve.
+            </div>
+          )}
+          {pendingAgentPlacement && (
+            <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 bg-white text-black border border-black px-3 py-2 font-mono text-xs font-bold shadow-[3px_3px_0_0_#000]">
+              {pendingAgentPlacement.count} {pendingAgentPlacement.type} houses ready · Click the map to set the origin
+            </div>
+          )}
 
           {/* Technical Toast Notifications */}
           {toast && (

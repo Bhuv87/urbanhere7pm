@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AGENCIES, Agency } from '../../data/agencies';
+import { AGENCIES } from '../../data/agencies';
 import { useStore } from '../../store';
 
 interface AgencyDirectoryProps {
@@ -8,23 +8,9 @@ interface AgencyDirectoryProps {
 
 export const AgencyDirectory: React.FC<AgencyDirectoryProps> = ({ className = '' }) => {
   const [selectedId, setSelectedId] = useState<string>('bbmp');
-  const { clashes, streetId } = useStore();
+  const { toggleDraftModal, setDraftAgencyId } = useStore();
 
   const selectedAgency = AGENCIES.find((a) => a.id === selectedId) || AGENCIES[0];
-
-  // Coordinates from the nearest clash or active street origin
-  const nearestClash = clashes && clashes.length > 0 ? clashes[0] : null;
-  const coordStr = nearestClash
-    ? `X: ${nearestClash.position[0].toFixed(1)}m, Z: ${nearestClash.position[2].toFixed(1)}m (Depth: ${Math.abs(nearestClash.position[1]).toFixed(1)}m)`
-    : 'X: 12.5m, Z: -8.0m (Trench Depth: 2.5m)';
-
-  const primaryRecipient = selectedAgency.emails[0]?.address || 'helpdesk@karnataka.gov.in';
-  const reportSubject = encodeURIComponent(
-    `Regarding Bengaluru UrbanOS Project - Statutory Utility Report [${selectedAgency.shortName}]`
-  );
-  const reportBody = encodeURIComponent(
-    `Hello,\n\nThis is an automated report from the Bengaluru Digital Twin regarding a utility clash.\nCoordinates: [${coordStr}].\nStreet: ${streetId}.\nDepartment: ${selectedAgency.name}.\nPlease review the attached schematic.\n\nGenerated via Bengaluru Digital Twin UrbanOS`
-  );
 
   return (
     <div className={`select-none font-mono text-black ${className}`}>
@@ -153,13 +139,16 @@ export const AgencyDirectory: React.FC<AgencyDirectoryProps> = ({ className = ''
           <div className="text-[10px] font-bold uppercase text-[#666666] mb-1">
             INCIDENT REPORT (3D TWIN)
           </div>
-          <a
-            href={`mailto:${primaryRecipient}?subject=${reportSubject}&body=${reportBody}`}
+          <button
+            onClick={() => {
+              setDraftAgencyId(selectedAgency.id);
+              toggleDraftModal();
+            }}
             className="w-full block text-center py-1.5 px-2 bg-[#dc0000] text-white hover:bg-[#b91c1c] border border-black font-mono text-xs font-bold uppercase shadow-[2px_2px_0_0_#000] active:translate-x-[1px] active:translate-y-[1px] cursor-pointer"
             title="Draft clash report email with 3D coordinates"
           >
             Draft Report from 3D Twin ✉
-          </a>
+          </button>
         </div>
       </div>
     </div>

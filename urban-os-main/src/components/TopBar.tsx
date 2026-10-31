@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { getArea, getStreet } from '../dataHelpers';
 import { downloadGeoJSON } from '../utils/exportGeoJSON';
 import { exportScenePNG } from '../utils/exportPNG';
+import { BlackboxExport } from './Scene/BlackboxExport';
 
 export const TopBar: React.FC = () => {
   const {
@@ -25,6 +26,8 @@ export const TopBar: React.FC = () => {
     runScan,
     activeSidebarTab,
     setActiveSidebarTab,
+    pipelineFocusMode,
+    toggleUtilities,
   } = useStore();
 
   const [exportOpen, setExportOpen] = useState(false);
@@ -126,6 +129,14 @@ export const TopBar: React.FC = () => {
 
       {/* Right Controls: Single/Area view, Explode, Export */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={toggleUtilities}
+          aria-pressed={pipelineFocusMode}
+          className={`border border-black px-2 py-1 font-mono text-xs font-bold uppercase shadow-[3px_3px_0_0_#000] cursor-pointer ${pipelineFocusMode ? 'bg-[#0284c7] text-white' : 'bg-white text-black'}`}
+        >
+          [ 👁 Pipes Only: {pipelineFocusMode ? 'ON' : 'OFF'} ]
+        </button>
+        <BlackboxExport />
         {/* Single / Area Toggle */}
         <button
           onClick={toggleViewMode}

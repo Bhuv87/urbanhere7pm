@@ -1,23 +1,24 @@
 import React, { useMemo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { calculateSunPosition } from '../../utils/solar';
 
 interface SolarPanelMeshProps {
   roofCenter: [number, number, number];
+  roofSize?: [number, number];
+  syncMonitor?: boolean;
 }
 
-export const SolarPanelMesh: React.FC<SolarPanelMeshProps> = ({ roofCenter }) => {
+export const SolarPanelMesh: React.FC<SolarPanelMeshProps> = ({ roofCenter, roofSize, syncMonitor = true }) => {
   const { solarTime, shadowedPanels, setShadowedPanels, cadModel, newHouses, streetId } = useStore();
   const groupRef = useRef<THREE.Group>(null);
 
-  const panelRows = 4;
-  const panelCols = 6;
   const panelW = 1.4; // visual size in meters
   const panelH = 0.9;
   const gap = 0.3;
+  const panelCols = roofSize ? Math.max(1, Math.min(6, Math.floor((roofSize[0] - 0.8 + gap) / (panelW + gap)))) : 6;
+  const panelRows = roofSize ? Math.max(1, Math.min(4, Math.floor((roofSize[1] - 0.8 + gap) / (panelH + gap)))) : 4;
 
-  // Grid of 24 panels
+  // Fit the placed-house array within the roof; existing buildings retain 24 panels.
   const panelPositions = useMemo(() => {
     const list: [number, number, number][] = [];
     const totalW = panelCols * panelW + (panelCols - 1) * gap;
@@ -31,44 +32,30 @@ export const SolarPanelMesh: React.FC<SolarPanelMeshProps> = ({ roofCenter }) =>
       }
     }
     return list;
-  }, []);
+  }, [panelCols, panelRows]);
+
+  const occludedIndices = useMemo(() => {
+    const placed = newHouses[streetId] || [];
+    const hasTallPlaced = placed.some((p) => p.type === '40x60' || p.type === '30x40');
+    return panelPositions.flatMap((_pos, idx) => {
+      const isWestColumn = idx % panelCols >= panelCols / 2;
+      const shadowed = (solarTime >= 14.5 && isWestColumn) ||
+        (solarTime <= 8.5 && !isWestColumn) ||
+        (!!cadModel && solarTime >= 13 && idx % 2 === 0) ||
+        (hasTallPlaced && solarTime >= 15 && idx > panelPositions.length / 2);
+      return shadowed ? [idx] : [];
+    });
+  }, [solarTime, cadModel, newHouses, streetId, panelPositions, panelCols]);
 
   // Raycast from each panel toward the sun light direction to detect occlusion
   useEffect(() => {
-    const interval = setInterval(() => {
-      const sun = calculateSunPosition(solarTime);
-      const sunDir = new THREE.Vector3(sun.x, sun.y, sun.z).normalize();
-
-      const occludedIndices: number[] = [];
-
-      // Determine shadow based on sun altitude/azimuth and presence of taller obstacles
-      // In Bengaluru at solarTime >= 14.5 (afternoon sun from west) or when CAD tower / tall houses are placed
-      const hasCadTower = !!cadModel;
-      const placed = newHouses[streetId] || [];
-      const hasTallPlaced = placed.some((p) => p.type === '40x60' || p.type === '30x40');
-
-      panelPositions.forEach((pos, idx) => {
-        // West side panels get shadowed in afternoon sun
-        const isWestColumn = idx % panelCols >= 3;
-        const afternoonShadow = solarTime >= 14.5 && isWestColumn;
-        const morningShadow = solarTime <= 8.5 && !isWestColumn;
-        const towerShadow = hasCadTower && solarTime >= 13.0 && (idx % 2 === 0);
-
-        if (afternoonShadow || morningShadow || towerShadow || (hasTallPlaced && solarTime >= 15.0 && idx > 12)) {
-          occludedIndices.push(idx);
-        }
-      });
-
-      setShadowedPanels(occludedIndices);
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [solarTime, cadModel, newHouses, streetId, panelPositions, setShadowedPanels]);
+    if (syncMonitor) setShadowedPanels(occludedIndices);
+  }, [syncMonitor, occludedIndices, setShadowedPanels]);
 
   return (
     <group ref={groupRef} position={roofCenter}>
       {panelPositions.map((pos, idx) => {
-        const isShadowed = shadowedPanels.includes(idx);
+        const isShadowed = syncMonitor ? shadowedPanels.includes(idx) : occludedIndices.includes(idx);
         return (
           <group key={idx} position={pos} rotation={[-0.26, 0, 0]}>
             {/* Mounting frame */}
