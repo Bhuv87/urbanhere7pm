@@ -400,6 +400,16 @@ export const AuthPage: React.FC = () => {
                     Supabase default free-tier SMTP limit reached. To skip confirmation emails, open your Supabase Dashboard: <strong>Authentication ➔ Providers ➔ Email ➔ toggle &quot;Confirm email&quot; OFF</strong>.
                   </p>
                 )}
+                {mode === 'signin' && /not confirmed|unconfirmed/i.test(errorMsg) && (
+                  <button
+                    type="button"
+                    onClick={resendConfirmation}
+                    disabled={loading}
+                    className="w-full mt-2 border border-white bg-white text-black px-2 py-1.5 font-bold uppercase cursor-pointer disabled:opacity-50"
+                  >
+                    RESEND CONFIRMATION EMAIL
+                  </button>
+                )}
               </div>
             )}
 
