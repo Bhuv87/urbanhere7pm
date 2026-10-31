@@ -396,9 +396,18 @@ export const AuthPage: React.FC = () => {
                   <span>{errorMsg}</span>
                 </div>
                 {errorMsg.toLowerCase().includes('rate limit') && (
-                  <p className="text-[10px] text-red-300 leading-tight">
-                    Supabase default free-tier SMTP limit reached. To skip confirmation emails, open your Supabase Dashboard: <strong>Authentication ➔ Providers ➔ Email ➔ toggle &quot;Confirm email&quot; OFF</strong>.
-                  </p>
+                  <div className="text-[10px] text-red-300 leading-tight space-y-1">
+                    <p>Supabase has paused confirmation emails for this project. Your account is not signed in. Keep email confirmation enabled.</p>
+                    <p>To resume signups, configure a custom SMTP sender in Supabase Dashboard → Authentication → SMTP Settings, then try again. Existing verified accounts can use Sign In.</p>
+                    <a
+                      href="https://supabase.com/docs/guides/auth/auth-smtp"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-white"
+                    >
+                      SMTP setup guide ↗
+                    </a>
+                  </div>
                 )}
                 {mode === 'signin' && /not confirmed|unconfirmed/i.test(errorMsg) && (
                   <button
