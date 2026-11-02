@@ -13,6 +13,9 @@ import { ZoningReport, evaluateZoningCompliance } from './utils/zoning';
 import { HouseModelVariant, DEFAULT_HOUSE_MODELS } from './data/houseModels';
 import { UserProfile } from './utils/supabase';
 import { scanAllClashes, rerouteRun, estimateCost } from './utils/scanEngine';
+import { LayoutItem, LayoutTransformMode } from './types/layout';
+
+export type { LayoutItem, LayoutTransformMode };
 
 export interface ArmedToolState {
   type: 'pipe' | 'house' | null;
@@ -176,6 +179,19 @@ export interface AppStore {
   // Toast
   toast: string | null;
   setToast: (msg: string | null) => void;
+
+  // Custom Area Layout Builder
+  layoutMode: 'explore' | 'create';
+  setLayoutMode: (mode: 'explore' | 'create') => void;
+  layoutItems: LayoutItem[];
+  addLayoutItem: (typeOrItem: string | Partial<LayoutItem>) => void;
+  updateLayoutItem: (id: string, updates: Partial<LayoutItem>) => void;
+  removeLayoutItem: (id: string) => void;
+  clearLayoutItems: () => void;
+  selectedLayoutItemId: string | null;
+  setSelectedLayoutItemId: (id: string | null) => void;
+  layoutTransformMode: LayoutTransformMode;
+  setLayoutTransformMode: (mode: LayoutTransformMode) => void;
 }
 
 export const useStore = create<AppStore>((set, get) => ({
@@ -727,4 +743,71 @@ export const useStore = create<AppStore>((set, get) => ({
   // Toast
   toast: null,
   setToast: (toast) => set({ toast }),
+
+  // Custom Area Layout Builder defaults
+  layoutMode: 'explore',
+  setLayoutMode: (layoutMode) => {
+    set({
+      layoutMode,
+      selectedLayoutItemId: null,
+      toast:
+        layoutMode === 'create'
+          ? 'Entered Custom Area Layout Builder [CREATE MODE]'
+          : 'Returned to Explore Mode. Layout saved in scene.',
+    });
+  },
+  layoutItems: [],
+  selectedLayoutItemId: null,
+  setSelectedLayoutItemId: (selectedLayoutItemId) => set({ selectedLayoutItemId }),
+  layoutTransformMode: 'translate',
+  setLayoutTransformMode: (layoutTransformMode) => set({ layoutTransformMode }),
+
+  addLayoutItem: (typeOrItem) => {
+    const isObject = typeof typeOrItem === 'object';
+    const type = isObject ? (typeOrItem.type || 'House') : typeOrItem;
+
+    let defaultY = 2.25;
+    if (type === 'Park') defaultY = 0.2;
+    else if (type === 'Road') defaultY = 0.1;
+    else if (type === 'Water Pipe') defaultY = 0.4;
+    else if (type === 'House') defaultY = 2.25;
+
+    const newItem: LayoutItem = {
+      id: isObject && typeOrItem.id ? typeOrItem.id : `layout-item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type,
+      position: isObject && typeOrItem.position ? typeOrItem.position : [0, defaultY, 0],
+      rotation: isObject && typeOrItem.rotation ? typeOrItem.rotation : [0, 0, 0],
+      scale: isObject && typeOrItem.scale ? typeOrItem.scale : [1, 1, 1],
+    };
+
+    set((state) => ({
+      layoutItems: [...state.layoutItems, newItem],
+      selectedLayoutItemId: newItem.id,
+      toast: `Added ${type} to layout grid · Drag/Rotate/Scale with gizmo`,
+    }));
+  },
+
+  updateLayoutItem: (id, updates) => {
+    set((state) => ({
+      layoutItems: state.layoutItems.map((item) =>
+        item.id === id ? { ...item, ...updates } : item
+      ),
+    }));
+  },
+
+  removeLayoutItem: (id) => {
+    set((state) => ({
+      layoutItems: state.layoutItems.filter((item) => item.id !== id),
+      selectedLayoutItemId: state.selectedLayoutItemId === id ? null : state.selectedLayoutItemId,
+      toast: 'Item removed from layout',
+    }));
+  },
+
+  clearLayoutItems: () => {
+    set({
+      layoutItems: [],
+      selectedLayoutItemId: null,
+      toast: 'Layout cleared',
+    });
+  },
 }));

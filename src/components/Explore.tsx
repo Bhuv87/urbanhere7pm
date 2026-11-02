@@ -23,6 +23,11 @@ export const Explore: React.FC = () => {
     rotateGhost,
     newHouses,
     updateHouseTransform,
+    layoutMode,
+    selectedLayoutItemId,
+    setSelectedLayoutItemId,
+    removeLayoutItem,
+    setLayoutTransformMode,
   } = useStore();
 
   // Global keyboard shortcuts (Esc, Enter, Delete, R/X/Z rotation)
@@ -41,13 +46,16 @@ export const Explore: React.FC = () => {
       if (e.key === 'Escape') {
         disarmTool();
         setSelectedObjectId(null);
+        setSelectedLayoutItemId(null);
         setToast('Tool cancelled [ESC]');
       } else if (e.key === 'Enter') {
         if (armedTool.type === 'pipe' && draftPipeRun && draftPipeRun.waypoints.length >= 2) {
           commitPipeRun();
         }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedObjectId) {
+        if (layoutMode === 'create' && selectedLayoutItemId) {
+          removeLayoutItem(selectedLayoutItemId);
+        } else if (selectedObjectId) {
           if (selectedObjectId.startsWith('house-')) {
             removeHouse(streetId, selectedObjectId);
           } else if (selectedObjectId.startsWith('pipe-')) {
@@ -55,6 +63,15 @@ export const Explore: React.FC = () => {
           }
           setSelectedObjectId(null);
         }
+      } else if (layoutMode === 'create' && (e.key === 'w' || e.key === 'W')) {
+        setLayoutTransformMode('translate');
+        setToast('Gizmo Mode: Move (Translate)');
+      } else if (layoutMode === 'create' && (e.key === 'e' || e.key === 'E')) {
+        setLayoutTransformMode('rotate');
+        setToast('Gizmo Mode: Rotate');
+      } else if (layoutMode === 'create' && (e.key === 'r' || e.key === 'R')) {
+        setLayoutTransformMode('scale');
+        setToast('Gizmo Mode: Scale');
       } else if (e.key === 'r' || e.key === 'R') {
         // Rotate Heading / Yaw
         if (armedTool.type === 'house') {
@@ -117,6 +134,11 @@ export const Explore: React.FC = () => {
     removePipeRun,
     setSelectedObjectId,
     setToast,
+    layoutMode,
+    selectedLayoutItemId,
+    removeLayoutItem,
+    setLayoutTransformMode,
+    setSelectedLayoutItemId,
   ]);
 
   // Toast auto-clear
@@ -142,10 +164,10 @@ export const Explore: React.FC = () => {
           <Scene />
 
           {/* Municipal Zoning HUD Overlay */}
-          <ZoningHUD />
+          {layoutMode !== 'create' && <ZoningHUD />}
 
           {/* Selected House 3D Rotation & Transform Inspector */}
-          <HouseTransformInspector />
+          {layoutMode !== 'create' && <HouseTransformInspector />}
 
           {/* Autonomous AI Command Center Agent */}
           <ChatAgent />
