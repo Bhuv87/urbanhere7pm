@@ -11,6 +11,14 @@ export function registerCameraAndControls(camera: THREE.Camera, controls: any) {
   registeredControls = controls;
 }
 
+export function getRegisteredControls() {
+  return registeredControls;
+}
+
+export function getRegisteredCamera() {
+  return registeredCamera;
+}
+
 export function flyToTopDown() {
   const store = useStore.getState();
   store.setViewMode('topdown');

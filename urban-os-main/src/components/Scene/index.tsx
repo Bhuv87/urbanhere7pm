@@ -10,11 +10,22 @@ import { CameraController } from './CameraController';
 import { isSoftwareGl } from '../../utils/softwareGl';
 import { ScanPanel } from './ScanPanel';
 import { RerouteHUD } from './RerouteHUD';
+import { CustomAreaLayout } from './CustomAreaLayout';
 
 // Invalidator to trigger on-demand frame rendering when state changes
 const Invalidator: React.FC = () => {
   const { invalidate } = useThree();
-  const { exploded, streetId, viewMode, solarTime, cadModel, newHouses, newPipeRuns } = useStore();
+  const {
+    exploded,
+    streetId,
+    viewMode,
+    solarTime,
+    cadModel,
+    newHouses,
+    newPipeRuns,
+    layoutMode,
+    layoutItems,
+  } = useStore();
 
   useEffect(() => {
     invalidate();
@@ -28,13 +39,24 @@ const Invalidator: React.FC = () => {
       clearTimeout(t3);
       clearTimeout(t4);
     };
-  }, [exploded, streetId, viewMode, solarTime, cadModel, newHouses, newPipeRuns, invalidate]);
+  }, [
+    exploded,
+    streetId,
+    viewMode,
+    solarTime,
+    cadModel,
+    newHouses,
+    newPipeRuns,
+    layoutMode,
+    layoutItems,
+    invalidate,
+  ]);
 
   return null;
 };
 
 export const Scene: React.FC = () => {
-  const { cityId, areaId, streetId, viewMode } = useStore();
+  const { cityId, areaId, streetId, viewMode, layoutMode, setSelectedLayoutItemId } = useStore();
   const [cursorPoint, setCursorPoint] = useState<[number, number, number] | null>(null);
 
   const currentArea = getArea(cityId, areaId);
@@ -42,9 +64,13 @@ export const Scene: React.FC = () => {
 
   return (
     <div className="w-full h-full relative bg-[#1a1e24] select-none">
-      {/* 2D BIM Clash & Reroute HUD Overlays */}
-      <ScanPanel />
-      <RerouteHUD />
+      {/* 2D BIM Clash & Reroute HUD Overlays (only in explore mode) */}
+      {layoutMode !== 'create' && (
+        <>
+          <ScanPanel />
+          <RerouteHUD />
+        </>
+      )}
 
       <Canvas
         gl={{ preserveDrawingBuffer: true, antialias: !isSoftwareGl, powerPreference: 'high-performance' }}
@@ -59,46 +85,61 @@ export const Scene: React.FC = () => {
         <SunLight />
         <Environment preset="city" environmentIntensity={0.6} />
 
-        {/* Global Ground Plane */}
-        <Ground onPointerMoveGround={setCursorPoint} />
+        {layoutMode === 'create' ? (
+          /* CREATE MODE: Flat grid at y=0, terrain and existing buildings hidden */
+          <>
+            <gridHelper
+              args={[240, 120, '#00ff66', '#334155']}
+              position={[0, 0, 0]}
+            />
+            <gridHelper
+              args={[240, 24, '#00aaff', '#1e293b']}
+              position={[0, 0.005, 0]}
+            />
+            {/* Click-away catcher plane at y=0 to deselect */}
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, -0.01, 0]}
+              onClick={() => setSelectedLayoutItemId(null)}
+            >
+              <planeGeometry args={[500, 500]} />
+              <meshBasicMaterial color="#14181f" depthWrite={false} />
+            </mesh>
+          </>
+        ) : (
+          /* EXPLORE MODE: Full ground terrain and existing street infrastructure */
+          <>
+            <Ground onPointerMoveGround={setCursorPoint} />
+            <gridHelper
+              args={[600, 300, '#444444', '#282d35']}
+              position={[0, 0.01, 0]}
+            />
 
-        {/* Ground grid lines for CAD reference */}
-        <gridHelper
-          args={[600, 300, '#444444', '#282d35']}
-          position={[0, 0.01, 0]}
-        />
-
-        {/* Render Streets */}
-        {viewMode === 'area' ? (
-          currentArea.streets.map((s) => {
-            const isFocused = s.id === currentStreet.id;
-            return (
-              <group key={s.id}>
-                {isFocused ? (
-                  <Street
-                    street={s}
-                    isFocused={true}
-                    cursorPoint={cursorPoint}
-                  />
-                ) : (
-                  <group>
+            {viewMode === 'area' ? (
+              currentArea.streets.map((s) => {
+                const isFocused = s.id === currentStreet.id;
+                return (
+                  <group key={s.id}>
                     <Street
                       street={s}
-                      isFocused={false}
-                      cursorPoint={null}
+                      isFocused={isFocused}
+                      cursorPoint={isFocused ? cursorPoint : null}
                     />
                   </group>
-                )}
-              </group>
-            );
-          })
-        ) : (
-          <Street
-            street={currentStreet}
-            isFocused={true}
-            cursorPoint={cursorPoint}
-          />
+                );
+              })
+            ) : (
+              <Street
+                street={currentStreet}
+                isFocused={true}
+                cursorPoint={cursorPoint}
+              />
+            )}
+          </>
         )}
+
+        {/* Custom Area Layout Items (rendered in both Explore and Create modes) */}
+        <CustomAreaLayout />
 
         {/* Soft Contact Ground Shadows */}
         {!isSoftwareGl && (
